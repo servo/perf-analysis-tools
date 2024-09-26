@@ -89,15 +89,10 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
             for event in sample.events()? {
                 events.push(TraceEvent {
                     ts: event.start.as_micros().try_into()?,
-                    // tts: Some(event.start.as_micros().try_into()?),
                     dur: match event.duration {
                         Some(dur) => Some(dur.as_micros().try_into()?),
                         None => None,
                     },
-                    // tdur: match event.duration {
-                    //     Some(dur) => Some(dur.as_micros().try_into()?),
-                    //     None => None,
-                    // },
                     ph: "X".to_owned(),
                     name: event.name,
                     cat: "content".to_owned(),
