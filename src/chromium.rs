@@ -167,6 +167,7 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
     }
 
     let result = SampleAnalysis {
+        path: path.to_owned(),
         navigation_id: navigation_id.to_owned(),
         frame: frame.to_owned(),
         all_events,
@@ -182,6 +183,7 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
 }
 
 pub struct SampleAnalysis {
+    path: String,
     navigation_id: String,
     frame: String,
     all_events: Vec<TraceEvent>,
@@ -199,6 +201,10 @@ struct SampleAnalysisRequest {
 }
 
 impl Sample for SampleAnalysis {
+    fn path(&self) -> &str {
+        &self.path
+    }
+
     fn durations(&self) -> &BTreeMap<String, Duration> {
         &self.durations
     }

@@ -138,6 +138,7 @@ fn analyse_sample(path: &str) -> eyre::Result<SampleAnalysis> {
     }
 
     Ok(SampleAnalysis {
+        path: path.to_owned(),
         dom,
         all_entries,
         relevant_entries,
@@ -170,6 +171,7 @@ fn tendril_to_str(tendril: &StrTendril) -> eyre::Result<&str> {
 }
 
 pub struct SampleAnalysis {
+    path: String,
     dom: RcDom,
     all_entries: Vec<TraceEntry>,
     relevant_entries: Vec<TraceEntry>,
@@ -189,6 +191,10 @@ struct TraceEntry {
 }
 
 impl Sample for SampleAnalysis {
+    fn path(&self) -> &str {
+        &self.path
+    }
+
     fn durations(&self) -> &BTreeMap<String, Duration> {
         &self.durations
     }
