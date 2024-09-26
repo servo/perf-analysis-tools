@@ -101,7 +101,8 @@ fn analyse_sample(path: &str) -> eyre::Result<SampleAnalysis> {
 
     // Discard entries after TimeToInteractive, because Servo requires us to
     // keep the window open for ten whole seconds after TimeToInteractive.
-    let all_entries: Vec<TraceEntry> = serde_json::from_str(&format!("[{json}]"))?;
+    let mut all_entries: Vec<TraceEntry> = serde_json::from_str(&format!("[{json}]"))?;
+    all_entries.sort_by(|p, q| p.startTime.cmp(&q.startTime).then(p.endTime.cmp(&q.endTime)));
     let mut relevant_entries = vec![];
     for entry in all_entries.iter() {
         relevant_entries.push(entry.clone());

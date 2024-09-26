@@ -70,7 +70,8 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
 
     let mut json = String::default();
     File::open(path)?.read_to_string(&mut json)?;
-    let all_events = serde_json::from_str::<JsonTrace>(&json)?.traceEvents;
+    let mut all_events = serde_json::from_str::<JsonTrace>(&json)?.traceEvents;
+    all_events.sort_by(|p, q| p.ts.cmp(&q.ts).then(p.dur.cmp(&q.dur)));
 
     let (navigation_id, frame) = all_events
         .iter()
