@@ -21,6 +21,10 @@ use tracing::{error_span, info, warn};
 
 use crate::summary::{Analysis, Event, Sample};
 
+static SPAN_CATEGORIES: &'static str = "Compositing LayoutPerform ScriptEvaluate ScriptParseHTML";
+static INSTANTANEOUS_CATEGORIES: &'static str =
+    "TimeToFirstContentfulPaint TimeToFirstPaint TimeToInteractive";
+
 pub fn main(args: Vec<String>) -> eyre::Result<()> {
     let samples = analyse_samples(&args)?;
     let analysis = Analysis { samples };
@@ -118,14 +122,20 @@ fn analyse_sample(path: &str) -> eyre::Result<SampleAnalysis> {
             "No entry with category TimeToInteractive! Did you let the page idle for ten seconds?"
         );
     }
-    for category in "Compositing LayoutPerform ScriptEvaluate ScriptParseHTML".split(" ") {
+    for category in SPAN_CATEGORIES.split(" ") {
         let duration = SampleAnalysis::sum_duration(&relevant_entries, category)?;
         durations.insert(category.to_owned(), duration);
         categories.remove(category);
     }
-    for category in "TimeToFirstContentfulPaint TimeToFirstPaint TimeToInteractive".split(" ") {
-        if let Some(duration) = SampleAnalysis::unique_offset_duration(&relevant_entries, category)?
-        {
+    for category in INSTANTANEOUS_CATEGORIES.split(" ") {
+        if let Some(event) = SampleAnalysis::unique_instantaneous_event_from_first_parse(
+            &relevant_entries,
+            &format!("*{category}"),
+            category,
+        )? {
+            let Some(duration) = event.duration else {
+                bail!("Event has no duration")
+            };
             durations.insert(category.to_owned(), duration);
             categories.remove(category);
         }
@@ -204,7 +214,8 @@ impl Sample for SampleAnalysis {
             .min()
             .ok_or_eyre("No events")?;
 
-        self.relevant_entries
+        let result = self
+            .relevant_entries
             .iter()
             .map(|e| -> eyre::Result<_> {
                 let start = e.startTime - start;
@@ -217,7 +228,23 @@ impl Sample for SampleAnalysis {
                     duration,
                 })
             })
-            .collect()
+            .collect::<eyre::Result<Vec<_>>>()?;
+
+        // Add some synthetic events with our interpretations.
+        let start = Duration::from_nanos(start.try_into()?);
+        let mut result = result;
+        for name in INSTANTANEOUS_CATEGORIES.split(" ") {
+            if let Some(mut event) = SampleAnalysis::unique_instantaneous_event_from_first_parse(
+                &self.relevant_entries,
+                &format!("*{name}"),
+                name,
+            )? {
+                event.start -= start;
+                result.push(event);
+            }
+        }
+
+        Ok(result)
     }
 }
 
@@ -232,12 +259,14 @@ impl SampleAnalysis {
         Ok(result.iter().sum())
     }
 
-    fn unique_offset_duration(
+    fn unique_instantaneous_event_from_first_parse(
         entries: &[TraceEntry],
+        result_name: &str,
         category: &str,
-    ) -> eyre::Result<Option<Duration>> {
-        let Some(first_entry) = entries.get(0) else {
-            bail!("No entries")
+    ) -> eyre::Result<Option<Event>> {
+        let Some(first_parse_entry) = entries.iter().find(|e| e.category == "ScriptParseHTML")
+        else {
+            bail!("No entries with category ScriptParseHTML")
         };
         let matching_entries = entries
             .iter()
@@ -248,10 +277,22 @@ impl SampleAnalysis {
             [entry] => entry,
             _ => bail!("Expected exactly one entry with category {category}"),
         };
+        if entry.endTime - entry.startTime > 0 {
+            bail!("Entry is not instantaneous");
+        }
+        if entry.startTime < first_parse_entry.startTime {
+            bail!("Entry is earlier than first ScriptParseHTML entry");
+        }
 
-        Ok(Some(Duration::from_nanos(
-            (entry.startTime - first_entry.startTime).try_into()?,
-        )))
+        let start = Duration::from_nanos(first_parse_entry.startTime.try_into()?);
+        let duration =
+            Duration::from_nanos((entry.startTime - first_parse_entry.startTime).try_into()?);
+
+        Ok(Some(Event {
+            name: result_name.to_owned(),
+            start,
+            duration: Some(duration),
+        }))
     }
 }
 

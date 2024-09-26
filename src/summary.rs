@@ -8,6 +8,7 @@ pub trait Sample {
     fn events(&self) -> eyre::Result<Vec<Event>>;
 }
 
+#[derive(Debug)]
 pub struct Event {
     pub name: String,
     pub start: Duration,

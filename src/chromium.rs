@@ -136,24 +136,47 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
         ts_start,
     };
 
-    let total_duration = result.unique_duration("fetchStart", "loadEventEnd")?;
-    let fetching_duration = result.unique_duration("fetchStart", "responseEnd")?;
-    let navigation_duration = result.unique_duration("navigationStart", "commitNavigationEnd")?;
+    let total = SampleAnalysis::unique_instantaneous_event_from(
+        &result.relevant_events,
+        "*Total",
+        "fetchStart",
+        "loadEventEnd",
+    )?;
+    let fetching = SampleAnalysis::unique_instantaneous_event_from(
+        &result.relevant_events,
+        "*Fetching",
+        "fetchStart",
+        "responseEnd",
+    )?;
+    let navigation = SampleAnalysis::unique_instantaneous_event_from(
+        &result.relevant_events,
+        "*Navigation",
+        "navigationStart",
+        "commitNavigationEnd",
+    )?;
+    let total_duration = total.duration.ok_or_eyre("Event has no duration")?;
+    let fetching_duration = fetching.duration.ok_or_eyre("Event has no duration")?;
+    let navigation_duration = navigation.duration.ok_or_eyre("Event has no duration")?;
     debug!("Total: {:?}", total_duration);
     debug!("Fetching: {:?}", fetching_duration);
     debug!("Navigation: {:?}", navigation_duration);
 
     // “loading” category events are timed from markAsMainFrame.
     let mut durations = BTreeMap::default();
-    let loading_event_names = result
-        .loading_events()
+    let loading_event_names = SampleAnalysis::loading_events(&result.relevant_events)
         .map(|e| &*e.name)
         .collect::<BTreeSet<_>>();
     for name in loading_event_names {
         if name == "markAsMainFrame" {
             continue;
         }
-        if let Ok(duration) = result.unique_duration("markAsMainFrame", name) {
+        if let Ok(event) = SampleAnalysis::unique_instantaneous_event_from(
+            &result.relevant_events,
+            name,
+            "markAsMainFrame",
+            name,
+        ) {
+            let duration = event.duration.ok_or_eyre("Event has no duration")?;
             debug!("{name}: {:?}", duration);
             durations.insert(name.to_owned(), duration);
         }
@@ -162,7 +185,7 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
     let other_event_names =
         "ParseHTML EvaluateScript UpdateLayoutTree Layout PrePaint Paint Layerize".split(" ");
     for name in other_event_names {
-        let duration = result.sum_duration(name)?;
+        let duration = SampleAnalysis::sum_duration(&result.relevant_events, name)?;
         debug!("{name}: {:?}", duration);
         durations.insert(name.to_owned(), duration);
     }
@@ -218,7 +241,7 @@ impl Sample for SampleAnalysis {
             .min()
             .ok_or_eyre("No events")?;
 
-        self.relevant_events
+        let result = self.relevant_events
             .iter()
             .filter(|e| "PaintTimingVisualizer::LayoutObjectPainted ResourceSendRequest ResourceReceivedData ResourceReceiveResponse".split(" ").find(|&name| name == e.name).is_none())
             .map(|e| -> eyre::Result<_> {
@@ -233,46 +256,76 @@ impl Sample for SampleAnalysis {
                     duration,
                 })
             })
-            .collect()
+            .collect::<eyre::Result<Vec<_>>>()?;
+
+        // Add some synthetic events with our interpretations.
+        let start = Duration::from_micros(start.try_into()?);
+        let mut result = result;
+        for event in SampleAnalysis::loading_events(&self.relevant_events) {
+            if event.name == "markAsMainFrame" {
+                continue;
+            }
+            if let Ok(mut event) = SampleAnalysis::unique_instantaneous_event_from(
+                &self.relevant_events,
+                &format!("*{}", event.name),
+                "markAsMainFrame",
+                &event.name,
+            ) {
+                event.start -= start;
+                result.push(event);
+            }
+        }
+
+        Ok(result)
     }
 }
 
-impl SampleAnalysisRequest {
-    fn loading_events(&self) -> impl Iterator<Item = &TraceEvent> {
-        self.relevant_events
-            .iter()
-            .filter(|e| e.has_category("loading"))
+impl SampleAnalysis {
+    fn loading_events(relevant_events: &[TraceEvent]) -> impl Iterator<Item = &TraceEvent> {
+        relevant_events.iter().filter(|e| e.has_category("loading"))
     }
 
-    fn sum_duration(&self, name: &str) -> eyre::Result<Duration> {
-        let result = self.dur_by_name(name).iter().sum::<usize>();
+    fn sum_duration(relevant_events: &[TraceEvent], name: &str) -> eyre::Result<Duration> {
+        let result = Self::dur_by_name(relevant_events, name)
+            .iter()
+            .sum::<usize>();
 
         Ok(Duration::from_micros(result.try_into()?))
     }
 
-    fn unique_duration(&self, start_name: &str, stop_name: &str) -> eyre::Result<Duration> {
-        let [start_ts] = self.ts_by_name(start_name)[..] else {
+    fn unique_instantaneous_event_from(
+        relevant_events: &[TraceEvent],
+        result_name: &str,
+        start_name: &str,
+        stop_name: &str,
+    ) -> eyre::Result<Event> {
+        let [start_ts] = Self::ts_by_name(relevant_events, start_name)[..] else {
             bail!("Expected exactly one event with name {start_name}");
         };
-        let [stop_ts] = self.ts_by_name(stop_name)[..] else {
+        let [stop_ts] = Self::ts_by_name(relevant_events, stop_name)[..] else {
             bail!("Expected exactly one event with name {stop_name}");
         };
 
-        Ok(Duration::from_micros(
-            u64::try_from(stop_ts)? - u64::try_from(start_ts)?,
-        ))
+        let start = Duration::from_micros(start_ts.try_into()?);
+        let duration = Duration::from_micros(u64::try_from(stop_ts)? - u64::try_from(start_ts)?);
+
+        Ok(Event {
+            name: result_name.to_owned(),
+            start,
+            duration: Some(duration),
+        })
     }
 
-    fn dur_by_name(&self, name: &str) -> Vec<usize> {
-        self.relevant_events
+    fn dur_by_name(relevant_events: &[TraceEvent], name: &str) -> Vec<usize> {
+        relevant_events
             .iter()
             .filter(|e| e.name == name)
             .filter_map(|e| e.dur)
             .collect()
     }
 
-    fn ts_by_name(&self, name: &str) -> Vec<usize> {
-        self.relevant_events
+    fn ts_by_name(relevant_events: &[TraceEvent], name: &str) -> Vec<usize> {
+        relevant_events
             .iter()
             .filter(|e| e.name == name)
             .map(|e| e.ts)
