@@ -99,17 +99,13 @@ fn analyse_sample(path: &str) -> eyre::Result<SampleAnalysis> {
         bail!("Failed to strip trailing comma");
     };
 
-    // Discard entries after TimeToInteractive, because Servo requires us to
-    // keep the window open for ten whole seconds after TimeToInteractive.
     let mut all_entries: Vec<TraceEntry> = serde_json::from_str(&format!("[{json}]"))?;
-    all_entries.sort_by(|p, q| p.startTime.cmp(&q.startTime).then(p.endTime.cmp(&q.endTime)));
-    let mut relevant_entries = vec![];
-    for entry in all_entries.iter() {
-        relevant_entries.push(entry.clone());
-        if entry.category == "TimeToInteractive" {
-            break;
-        }
-    }
+    all_entries.sort_by(|p, q| {
+        p.startTime
+            .cmp(&q.startTime)
+            .then(p.endTime.cmp(&q.endTime))
+    });
+    let relevant_entries = all_entries.clone();
 
     let mut categories = relevant_entries
         .iter()
