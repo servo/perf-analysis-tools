@@ -44,7 +44,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
         .collect::<BTreeSet<_>>();
     for name in durations_keys {
         if let Ok(summary) = analysis.summary(|s| s.durations.get(name).map(|d| d.as_secs_f64())) {
-            info!("{name}: {}", summary);
+            println!("{name}: {}", summary);
         };
     }
 

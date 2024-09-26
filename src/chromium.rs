@@ -22,15 +22,15 @@ static METRICS: &'static [(&'static str, &'static str)] =
 pub fn main(args: Vec<String>) -> eyre::Result<()> {
     let samples = analyse_samples(&args)?;
     let analysis = Analysis { samples };
-    info!(
+    println!(
         "Total: {}",
         analysis.summary(|s| s.total_duration.as_secs_f64())?
     );
-    info!(
+    println!(
         "Fetching: {}",
         analysis.summary(|s| s.fetching_duration.as_secs_f64())?
     );
-    info!(
+    println!(
         "Navigation: {}",
         analysis.summary(|s| s.navigation_duration.as_secs_f64())?
     );
@@ -42,7 +42,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
         .collect::<BTreeSet<_>>();
     for name in durations_keys {
         if let Ok(summary) = analysis.summary(|s| s.durations.get(name).map(|d| d.as_secs_f64())) {
-            info!("{name}: {}", summary);
+            println!("{name}: {}", summary);
         };
     }
 
