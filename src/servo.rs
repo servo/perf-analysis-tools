@@ -19,7 +19,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tracing::{error_span, info, warn};
 
-use crate::summary::{Analysis, Event, Sample};
+use crate::summary::{Analysis, Event, Sample, SYNTHETIC_NAMES};
 
 static SPAN_CATEGORIES: &'static str = "Compositing LayoutPerform ScriptEvaluate ScriptParseHTML";
 static INSTANTANEOUS_CATEGORIES: &'static str =
@@ -42,10 +42,28 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
         .iter()
         .flat_map(|s| s.durations.keys())
         .collect::<BTreeSet<_>>();
+    println!(">>> Real events");
     for name in durations_keys {
         if let Ok(summary) = analysis.summary(|s| s.durations.get(name).map(|d| d.as_secs_f64())) {
             println!("{name}: {}", summary);
         };
+    }
+    println!(">>> Synthetic and interpreted events");
+    for synthetic_name in SYNTHETIC_NAMES.split(" ") {
+        if let Ok(summary) = analysis.summary(|s| {
+            let Ok(events) = s.synthetic_events() else {
+                warn!("Failed to get synthetic events");
+                return None;
+            };
+            let result = events
+                .iter()
+                .filter(|e| e.name == synthetic_name)
+                .flat_map(|e| e.duration.map(|d| d.as_secs_f64()))
+                .sum::<f64>();
+            Some(result)
+        }) {
+            println!("{synthetic_name}: {}", summary);
+        }
     }
 
     Ok(())
@@ -136,27 +154,12 @@ fn analyse_sample(path: &str) -> eyre::Result<SampleAnalysis> {
         durations.insert(category.to_owned(), duration);
         categories.remove(category);
     }
-    for category in INSTANTANEOUS_CATEGORIES.split(" ") {
-        if let Some(event) = SampleAnalysis::unique_instantaneous_event_from_first_parse(
-            &relevant_entries,
-            &format!("*{category}"),
-            category,
-        )? {
-            let Some(duration) = event.duration else {
-                bail!("Event has no duration")
-            };
-            durations.insert(category.to_owned(), duration);
-            categories.remove(category);
-        }
-    }
     for category in categories {
         warn!("Entry has unknown category: {category}");
     }
 
     Ok(SampleAnalysis {
         path: path.to_owned(),
-        dom,
-        all_entries,
         relevant_entries,
         durations,
     })
@@ -188,8 +191,6 @@ fn tendril_to_str(tendril: &StrTendril) -> eyre::Result<&str> {
 
 pub struct SampleAnalysis {
     path: String,
-    dom: RcDom,
-    all_entries: Vec<TraceEntry>,
     relevant_entries: Vec<TraceEntry>,
     durations: BTreeMap<String, Duration>,
 }

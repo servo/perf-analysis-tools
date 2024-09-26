@@ -10,7 +10,7 @@ use tracing::{debug, error_span, info, trace, warn};
 
 use crate::{
     json::{JsonTrace, TraceEvent},
-    summary::{Analysis, Event, Sample},
+    summary::{Analysis, Event, Sample, SYNTHETIC_NAMES},
 };
 
 static PARSE_NAMES: &'static str = "ParseHTML";
@@ -23,28 +23,34 @@ static METRICS: &'static [(&'static str, &'static str)] =
 pub fn main(args: Vec<String>) -> eyre::Result<()> {
     let samples = analyse_samples(&args)?;
     let analysis = Analysis { samples };
-    println!(
-        "Total: {}",
-        analysis.summary(|s| s.total_duration.as_secs_f64())?
-    );
-    println!(
-        "Fetching: {}",
-        analysis.summary(|s| s.fetching_duration.as_secs_f64())?
-    );
-    println!(
-        "Navigation: {}",
-        analysis.summary(|s| s.navigation_duration.as_secs_f64())?
-    );
 
     let durations_keys = analysis
         .samples
         .iter()
         .flat_map(|s| s.durations.keys())
         .collect::<BTreeSet<_>>();
+    println!(">>> Real events");
     for name in durations_keys {
         if let Ok(summary) = analysis.summary(|s| s.durations.get(name).map(|d| d.as_secs_f64())) {
             println!("{name}: {}", summary);
         };
+    }
+    println!(">>> Synthetic and interpreted events");
+    for synthetic_name in SYNTHETIC_NAMES.split(" ") {
+        if let Ok(summary) = analysis.summary(|s| {
+            let Ok(events) = s.synthetic_events() else {
+                warn!("Failed to get synthetic events");
+                return None;
+            };
+            let result = events
+                .iter()
+                .filter(|e| e.name == synthetic_name)
+                .flat_map(|e| e.duration.map(|d| d.as_secs_f64()))
+                .sum::<f64>();
+            Some(result)
+        }) {
+            println!("{synthetic_name}: {}", summary);
+        }
     }
 
     Ok(())
@@ -138,75 +144,18 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
         result.push(event.to_owned());
     }
 
-    let result = SampleAnalysisRequest {
-        relevant_events: result,
-        ts_start,
-    };
-
-    let total = SampleAnalysis::unique_instantaneous_event_from(
-        &result.relevant_events,
-        "*Total",
-        "fetchStart",
-        "loadEventEnd",
-    )?;
-    let fetching = SampleAnalysis::unique_instantaneous_event_from(
-        &result.relevant_events,
-        "*Fetching",
-        "fetchStart",
-        "responseEnd",
-    )?;
-    let navigation = SampleAnalysis::unique_instantaneous_event_from(
-        &result.relevant_events,
-        "*Navigation",
-        "navigationStart",
-        "commitNavigationEnd",
-    )?;
-    let total_duration = total.duration.ok_or_eyre("Event has no duration")?;
-    let fetching_duration = fetching.duration.ok_or_eyre("Event has no duration")?;
-    let navigation_duration = navigation.duration.ok_or_eyre("Event has no duration")?;
-    debug!("Total: {:?}", total_duration);
-    debug!("Fetching: {:?}", fetching_duration);
-    debug!("Navigation: {:?}", navigation_duration);
-
-    // “loading” category events are timed from markAsMainFrame.
     let mut durations = BTreeMap::default();
-    let loading_event_names = SampleAnalysis::loading_events(&result.relevant_events)
-        .map(|e| &*e.name)
-        .collect::<BTreeSet<_>>();
-    for name in loading_event_names {
-        if name == "markAsMainFrame" {
-            continue;
-        }
-        if let Ok(event) = SampleAnalysis::unique_instantaneous_event_from(
-            &result.relevant_events,
-            name,
-            "markAsMainFrame",
-            name,
-        ) {
-            let duration = event.duration.ok_or_eyre("Event has no duration")?;
-            debug!("{name}: {:?}", duration);
-            durations.insert(name.to_owned(), duration);
-        }
-    }
-
-    let other_event_names =
-        "ParseHTML EvaluateScript UpdateLayoutTree Layout PrePaint Paint Layerize".split(" ");
-    for name in other_event_names {
-        let duration = SampleAnalysis::sum_duration(&result.relevant_events, name)?;
+    let interesting_event_names =
+        format!("{PARSE_NAMES} {SCRIPT_NAMES} {LAYOUT_NAMES} {RASTERISE_NAMES}");
+    for name in interesting_event_names.split(" ") {
+        let duration = SampleAnalysis::sum_duration(&result, name)?;
         debug!("{name}: {:?}", duration);
         durations.insert(name.to_owned(), duration);
     }
 
     let result = SampleAnalysis {
         path: path.to_owned(),
-        navigation_id: navigation_id.to_owned(),
-        frame: frame.to_owned(),
-        all_events,
-        relevant_events: result.relevant_events,
-        ts_start: result.ts_start,
-        total_duration,
-        fetching_duration,
-        navigation_duration,
+        relevant_events: result,
         durations,
     };
 
@@ -215,20 +164,8 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
 
 pub struct SampleAnalysis {
     path: String,
-    navigation_id: String,
-    frame: String,
-    all_events: Vec<TraceEvent>,
     relevant_events: Vec<TraceEvent>,
-    ts_start: usize,
-    total_duration: Duration,
-    fetching_duration: Duration,
-    navigation_duration: Duration,
     durations: BTreeMap<String, Duration>,
-}
-
-struct SampleAnalysisRequest {
-    relevant_events: Vec<TraceEvent>,
-    ts_start: usize,
 }
 
 impl Sample for SampleAnalysis {
@@ -312,6 +249,8 @@ impl Sample for SampleAnalysis {
         .into_iter()
         .flatten()
         .collect::<Vec<_>>();
+        // “loading” category events like `firstPaint` and `firstContentfulPaint` are timed from `markAsMainFrame`.
+        // <https://codereview.chromium.org/2712773002>
         for (result_name, stop_name) in METRICS {
             if let Ok(mut event) = SampleAnalysis::unique_instantaneous_event_from(
                 &self.relevant_events,
@@ -329,10 +268,6 @@ impl Sample for SampleAnalysis {
 }
 
 impl SampleAnalysis {
-    fn loading_events(relevant_events: &[TraceEvent]) -> impl Iterator<Item = &TraceEvent> {
-        relevant_events.iter().filter(|e| e.has_category("loading"))
-    }
-
     fn sum_duration(relevant_events: &[TraceEvent], name: &str) -> eyre::Result<Duration> {
         let result = Self::dur_by_name(relevant_events, name)
             .iter()
@@ -409,9 +344,5 @@ impl TraceEvent {
             .and_then(|m| m.get("frame"))
             .or(self.args.get("frame"))
             .and_then(|v| v.as_str())
-    }
-
-    fn has_category(&self, category: &str) -> bool {
-        self.cat.split(",").find(|&cat| cat == category).is_some()
     }
 }
