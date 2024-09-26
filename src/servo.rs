@@ -21,10 +21,18 @@ use tracing::{error_span, info, warn};
 
 use crate::summary::{Analysis, Event, Sample};
 
-static BUSY_CATEGORIES: &'static str = "Compositing LayoutPerform ScriptEvaluate ScriptParseHTML";
 static SPAN_CATEGORIES: &'static str = "Compositing LayoutPerform ScriptEvaluate ScriptParseHTML";
 static INSTANTANEOUS_CATEGORIES: &'static str =
-    "TimeToFirstContentfulPaint TimeToFirstPaint TimeToInteractive";
+    "TimeToFirstPaint TimeToFirstContentfulPaint TimeToInteractive";
+static PARSE_EVENTS: &'static str = "ScriptParseHTML";
+static SCRIPT_EVENTS: &'static str = "ScriptEvaluate";
+static LAYOUT_EVENTS: &'static str = "LayoutPerform";
+static PAINT_EVENTS: &'static str = "Compositing";
+static METRICS: &'static [(&'static str, &'static str)] = &[
+    ("FP", "TimeToFirstPaint"),
+    ("FCP", "TimeToFirstContentfulPaint"),
+    ("TTI", "TimeToInteractive"),
+];
 
 pub fn main(args: Vec<String>) -> eyre::Result<()> {
     let samples = analyse_samples(&args)?;
@@ -245,18 +253,44 @@ impl Sample for SampleAnalysis {
         let start = Duration::from_nanos(start.try_into()?);
 
         // Add some synthetic events with our interpretations.
-        let busy_events = real_events.iter().filter(|e| {
-            BUSY_CATEGORIES
+        let parse_events = real_events.iter().filter(|e| {
+            PARSE_EVENTS
                 .split(" ")
                 .find(|&name| name == e.name)
                 .is_some()
         });
-        let mut result = Event::generate_merged_events(busy_events, "Busy")?;
-        for name in INSTANTANEOUS_CATEGORIES.split(" ") {
+        let script_events = real_events.iter().filter(|e| {
+            SCRIPT_EVENTS
+                .split(" ")
+                .find(|&name| name == e.name)
+                .is_some()
+        });
+        let layout_events = real_events.iter().filter(|e| {
+            LAYOUT_EVENTS
+                .split(" ")
+                .find(|&name| name == e.name)
+                .is_some()
+        });
+        let paint_events = real_events.iter().filter(|e| {
+            PAINT_EVENTS
+                .split(" ")
+                .find(|&name| name == e.name)
+                .is_some()
+        });
+        let mut result = [
+            Event::generate_merged_events(parse_events, "Parse")?,
+            Event::generate_merged_events(script_events, "Script")?,
+            Event::generate_merged_events(layout_events, "Layout")?,
+            Event::generate_merged_events(paint_events, "Paint")?,
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+        for (result_name, category) in METRICS {
             if let Some(mut event) = SampleAnalysis::unique_instantaneous_event_from_first_parse(
                 &self.relevant_entries,
-                &format!("*{name}"),
-                name,
+                result_name,
+                category,
             )? {
                 event.start -= start;
                 result.push(event);

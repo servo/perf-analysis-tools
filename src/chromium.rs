@@ -13,7 +13,11 @@ use crate::{
     summary::{Analysis, Event, Sample},
 };
 
-static BUSY_NAMES: &'static str = "ParseHTML EvaluateScript FunctionCall TimerFire UpdateLayoutTree Layout PrePaint Paint Layerize";
+static PARSE_NAMES: &'static str = "ParseHTML";
+static SCRIPT_NAMES: &'static str = "EvaluateScript FunctionCall TimerFire";
+static LAYOUT_NAMES: &'static str = "UpdateLayoutTree Layout PrePaint Paint Layerize";
+static METRICS: &'static [(&'static str, &'static str)] =
+    &[("FP", "firstPaint"), ("FCP", "firstContentfulPaint")];
 
 pub fn main(args: Vec<String>) -> eyre::Result<()> {
     let samples = analyse_samples(&args)?;
@@ -274,19 +278,39 @@ impl Sample for SampleAnalysis {
         let start = Duration::from_micros(start.try_into()?);
 
         // Add some synthetic events with our interpretations.
-        let busy_events = real_events
-            .iter()
-            .filter(|e| BUSY_NAMES.split(" ").find(|&name| name == e.name).is_some());
-        let mut result = Event::generate_merged_events(busy_events, "Busy")?;
-        for event in SampleAnalysis::loading_events(&self.relevant_events) {
-            if event.name == "markAsMainFrame" {
-                continue;
-            }
+        let parse_events = real_events.iter().filter(|e| {
+            PARSE_NAMES
+                .split(" ")
+                .find(|&name| name == e.name)
+                .is_some()
+        });
+        let script_events = real_events.iter().filter(|e| {
+            SCRIPT_NAMES
+                .split(" ")
+                .find(|&name| name == e.name)
+                .is_some()
+        });
+        let layout_events = real_events.iter().filter(|e| {
+            LAYOUT_NAMES
+                .split(" ")
+                .find(|&name| name == e.name)
+                .is_some()
+        });
+        let mut result = [
+            Event::generate_merged_events(parse_events, "Parse")?,
+            Event::generate_merged_events(script_events, "Script")?,
+            Event::generate_merged_events(layout_events, "Layout")?,
+            // TODO: paint events?
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+        for (result_name, stop_name) in METRICS {
             if let Ok(mut event) = SampleAnalysis::unique_instantaneous_event_from(
                 &self.relevant_events,
-                &format!("*{}", event.name),
+                result_name,
                 "markAsMainFrame",
-                &event.name,
+                stop_name,
             ) {
                 event.start -= start;
                 result.push(event);
