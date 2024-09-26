@@ -11,6 +11,7 @@ pub trait Sample {
 pub struct Event {
     pub name: String,
     pub start: Duration,
+    /// Some if the event is a span, None if the event is instantaneous.
     pub duration: Option<Duration>,
 }
 

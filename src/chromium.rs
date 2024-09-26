@@ -220,6 +220,7 @@ impl Sample for SampleAnalysis {
 
         self.relevant_events
             .iter()
+            .filter(|e| "PaintTimingVisualizer::LayoutObjectPainted ResourceSendRequest ResourceReceivedData ResourceReceiveResponse".split(" ").find(|&name| name == e.name).is_none())
             .map(|e| -> eyre::Result<_> {
                 let start = e.ts - start;
                 let duration = match e.dur {

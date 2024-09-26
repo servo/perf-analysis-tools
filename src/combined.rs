@@ -58,6 +58,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
 
     let longest_path_prefix = longest_path_prefix.ok_or_eyre("No longest path prefix")?;
     let mut events = vec![];
+    // For each analysis given, create a “process”.
     for (i, (analysis, name)) in analyses.into_iter().zip(names).enumerate() {
         events.push(TraceEvent {
             ph: "M".to_owned(),
@@ -67,6 +68,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
             args: [("name".to_owned(), json!(name))].into_iter().collect(),
             ..Default::default()
         });
+        // For each of its samples, create a “thread”.
         for (j, sample) in analysis.samples.into_iter().enumerate() {
             // Strip the longest path prefix across all samples and all commands, for brevity in Perfetto UI.
             let path = Path::new(sample.path()).canonicalize()?;
@@ -93,7 +95,12 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
                         Some(dur) => Some(dur.as_micros().try_into()?),
                         None => None,
                     },
-                    ph: "X".to_owned(),
+                    ph: if event.duration.is_some() {
+                        "X".to_owned()
+                    } else {
+                        "I".to_owned()
+                    },
+                    s: Some("t".to_owned()),
                     name: event.name,
                     cat: "content".to_owned(),
                     pid: i,
