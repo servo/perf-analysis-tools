@@ -173,10 +173,6 @@ impl Sample for SampleAnalysis {
         &self.path
     }
 
-    fn durations(&self) -> &BTreeMap<String, Duration> {
-        &self.durations
-    }
-
     fn real_events(&self) -> eyre::Result<Vec<Event>> {
         let start = self
             .relevant_events

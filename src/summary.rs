@@ -6,7 +6,6 @@ pub static SYNTHETIC_NAMES: &'static str = "Parse Script Layout Rasterise FP FCP
 
 pub trait Sample {
     fn path(&self) -> &str;
-    fn durations(&self) -> &BTreeMap<String, Duration>;
     fn real_events(&self) -> eyre::Result<Vec<Event>>;
     fn synthetic_events(&self) -> eyre::Result<Vec<Event>>;
 }
@@ -45,18 +44,15 @@ impl Event {
         events: impl Iterator<Item = &'event Event>,
         merged_name: &str,
     ) -> eyre::Result<Vec<Event>> {
-        enum Edge<'event> {
-            Start(&'event Event),
-            End(&'event Event),
+        enum Edge {
+            Start,
+            End,
         }
 
         let mut edges: BTreeMap<Duration, Vec<Edge>> = BTreeMap::default();
         for event in events {
-            edges
-                .entry(event.start)
-                .or_default()
-                .push(Edge::Start(event));
-            edges.entry(event.end()).or_default().push(Edge::End(event));
+            edges.entry(event.start).or_default().push(Edge::Start);
+            edges.entry(event.end()).or_default().push(Edge::End);
         }
 
         let mut result = vec![];
@@ -66,8 +62,8 @@ impl Event {
             let mut new_active_count = active_count;
             for edge in edges {
                 match edge {
-                    Edge::Start(_) => new_active_count += 1,
-                    Edge::End(_) => new_active_count -= 1,
+                    Edge::Start => new_active_count += 1,
+                    Edge::End => new_active_count -= 1,
                 }
             }
             if active_count > 0 && new_active_count == 0 {
@@ -218,17 +214,5 @@ impl Display for Summary<f64> {
             max,
             max_unit,
         )
-    }
-}
-
-impl<T> Summary<T> {
-    fn convert<U>(&self, mut f: impl FnMut(&T) -> U) -> Summary<U> {
-        Summary {
-            n: self.n,
-            mean: f(&self.mean),
-            stdev: f(&self.stdev),
-            min: f(&self.min),
-            max: f(&self.max),
-        }
     }
 }

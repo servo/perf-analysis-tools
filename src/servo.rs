@@ -21,13 +21,10 @@ use tracing::{error_span, info, warn};
 
 use crate::summary::{Analysis, Event, Sample, SYNTHETIC_NAMES};
 
-static SPAN_CATEGORIES: &'static str = "Compositing LayoutPerform ScriptEvaluate ScriptParseHTML";
-static INSTANTANEOUS_CATEGORIES: &'static str =
-    "TimeToFirstPaint TimeToFirstContentfulPaint TimeToInteractive";
-static PARSE_EVENTS: &'static str = "ScriptParseHTML";
-static SCRIPT_EVENTS: &'static str = "ScriptEvaluate";
-static LAYOUT_EVENTS: &'static str = "LayoutPerform";
-static RASTERISE_EVENTS: &'static str = "Compositing";
+static PARSE_NAMES: &'static str = "ScriptParseHTML";
+static SCRIPT_NAMES: &'static str = "ScriptEvaluate";
+static LAYOUT_NAMES: &'static str = "LayoutPerform";
+static RASTERISE_NAMES: &'static str = "Compositing";
 static METRICS: &'static [(&'static str, &'static str)] = &[
     ("FP", "TimeToFirstPaint"),
     ("FCP", "TimeToFirstContentfulPaint"),
@@ -138,24 +135,22 @@ fn analyse_sample(path: &str) -> eyre::Result<SampleAnalysis> {
     });
     let relevant_entries = all_entries.clone();
 
-    let mut categories = relevant_entries
+    let categories = relevant_entries
         .iter()
         .map(|e| e.category.clone())
         .collect::<BTreeSet<_>>();
-    let mut durations = BTreeMap::default();
-
     if !categories.contains("TimeToInteractive") {
         warn!(
             "No entry with category TimeToInteractive! Did you let the page idle for ten seconds?"
         );
     }
-    for category in SPAN_CATEGORIES.split(" ") {
+
+    let mut durations = BTreeMap::default();
+    let interesting_categories =
+        format!("{PARSE_NAMES} {SCRIPT_NAMES} {LAYOUT_NAMES} {RASTERISE_NAMES}");
+    for category in interesting_categories.split(" ") {
         let duration = SampleAnalysis::sum_duration(&relevant_entries, category)?;
         durations.insert(category.to_owned(), duration);
-        categories.remove(category);
-    }
-    for category in categories {
-        warn!("Entry has unknown category: {category}");
     }
 
     Ok(SampleAnalysis {
@@ -212,10 +207,6 @@ impl Sample for SampleAnalysis {
         &self.path
     }
 
-    fn durations(&self) -> &BTreeMap<String, Duration> {
-        &self.durations
-    }
-
     fn real_events(&self) -> eyre::Result<Vec<Event>> {
         let start = self
             .relevant_entries
@@ -255,25 +246,25 @@ impl Sample for SampleAnalysis {
 
         // Add some synthetic events with our interpretations.
         let parse_events = real_events.iter().filter(|e| {
-            PARSE_EVENTS
+            PARSE_NAMES
                 .split(" ")
                 .find(|&name| name == e.name)
                 .is_some()
         });
         let script_events = real_events.iter().filter(|e| {
-            SCRIPT_EVENTS
+            SCRIPT_NAMES
                 .split(" ")
                 .find(|&name| name == e.name)
                 .is_some()
         });
         let layout_events = real_events.iter().filter(|e| {
-            LAYOUT_EVENTS
+            LAYOUT_NAMES
                 .split(" ")
                 .find(|&name| name == e.name)
                 .is_some()
         });
         let rasterise_events = real_events.iter().filter(|e| {
-            RASTERISE_EVENTS
+            RASTERISE_NAMES
                 .split(" ")
                 .find(|&name| name == e.name)
                 .is_some()
