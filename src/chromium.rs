@@ -13,6 +13,8 @@ use crate::{
     summary::{Analysis, Event, Sample},
 };
 
+static BUSY_NAMES: &'static str = "ParseHTML EvaluateScript FunctionCall TimerFire UpdateLayoutTree Layout PrePaint Paint Layerize";
+
 pub fn main(args: Vec<String>) -> eyre::Result<()> {
     let samples = analyse_samples(&args)?;
     let analysis = Analysis { samples };
@@ -233,7 +235,7 @@ impl Sample for SampleAnalysis {
         &self.durations
     }
 
-    fn events(&self) -> eyre::Result<Vec<Event>> {
+    fn real_events(&self) -> eyre::Result<Vec<Event>> {
         let start = self
             .relevant_events
             .iter()
@@ -258,9 +260,24 @@ impl Sample for SampleAnalysis {
             })
             .collect::<eyre::Result<Vec<_>>>()?;
 
-        // Add some synthetic events with our interpretations.
+        Ok(result)
+    }
+
+    fn synthetic_events(&self) -> eyre::Result<Vec<Event>> {
+        let real_events = self.real_events()?;
+        let start = self
+            .relevant_events
+            .iter()
+            .map(|e| e.ts)
+            .min()
+            .ok_or_eyre("No events")?;
         let start = Duration::from_micros(start.try_into()?);
-        let mut result = result;
+
+        // Add some synthetic events with our interpretations.
+        let busy_events = real_events
+            .iter()
+            .filter(|e| BUSY_NAMES.split(" ").find(|&name| name == e.name).is_some());
+        let mut result = Event::generate_merged_events(busy_events, "Busy")?;
         for event in SampleAnalysis::loading_events(&self.relevant_events) {
             if event.name == "markAsMainFrame" {
                 continue;

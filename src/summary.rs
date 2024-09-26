@@ -5,10 +5,11 @@ use jane_eyre::eyre::{self, OptionExt};
 pub trait Sample {
     fn path(&self) -> &str;
     fn durations(&self) -> &BTreeMap<String, Duration>;
-    fn events(&self) -> eyre::Result<Vec<Event>>;
+    fn real_events(&self) -> eyre::Result<Vec<Event>>;
+    fn synthetic_events(&self) -> eyre::Result<Vec<Event>>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Event {
     pub name: String,
     pub start: Duration,
@@ -27,6 +28,101 @@ pub struct Summary<T> {
     pub stdev: T,
     pub min: T,
     pub max: T,
+}
+
+impl Event {
+    pub fn end(&self) -> Duration {
+        if let Some(duration) = self.duration {
+            self.start + duration
+        } else {
+            self.start.clone()
+        }
+    }
+
+    pub fn generate_merged_events<'event>(
+        events: impl Iterator<Item = &'event Event>,
+        merged_name: &str,
+    ) -> eyre::Result<Vec<Event>> {
+        enum Edge<'event> {
+            Start(&'event Event),
+            End(&'event Event),
+        }
+
+        let mut edges: BTreeMap<Duration, Vec<Edge>> = BTreeMap::default();
+        for event in events {
+            edges
+                .entry(event.start)
+                .or_default()
+                .push(Edge::Start(event));
+            edges.entry(event.end()).or_default().push(Edge::End(event));
+        }
+
+        let mut result = vec![];
+        let mut active_count = 0usize;
+        let mut start_time = None;
+        for (time, edges) in edges {
+            let mut new_active_count = active_count;
+            for edge in edges {
+                match edge {
+                    Edge::Start(_) => new_active_count += 1,
+                    Edge::End(_) => new_active_count -= 1,
+                }
+            }
+            if active_count > 0 && new_active_count == 0 {
+                let start_time = start_time.ok_or_eyre("No start time")?;
+                let duration = time - start_time;
+                result.push(Event {
+                    name: merged_name.to_owned(),
+                    start: start_time,
+                    duration: Some(duration),
+                });
+            } else if active_count == 0 && new_active_count > 0 {
+                start_time = Some(time);
+            }
+            active_count = new_active_count;
+        }
+
+        Ok(result)
+    }
+}
+
+#[test]
+fn test_generate_merged_events() -> eyre::Result<()> {
+    let result = Event::generate_merged_events(
+        [
+            Event {
+                name: "".to_owned(),
+                start: Duration::from_secs(1),
+                duration: None,
+            },
+            Event {
+                name: "".to_owned(),
+                start: Duration::from_secs(2),
+                duration: Some(Duration::from_secs(2)),
+            },
+            Event {
+                name: "".to_owned(),
+                start: Duration::from_secs(3),
+                duration: Some(Duration::from_secs(2)),
+            },
+            Event {
+                name: "".to_owned(),
+                start: Duration::from_secs(5),
+                duration: Some(Duration::from_secs(2)),
+            },
+        ]
+        .iter(),
+        "",
+    )?;
+    assert_eq!(
+        result,
+        [Event {
+            name: "".to_owned(),
+            start: Duration::from_secs(2),
+            duration: Some(Duration::from_secs(5))
+        },]
+    );
+    Ok(())
 }
 
 impl<SampleType> Analysis<SampleType> {

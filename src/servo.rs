@@ -21,6 +21,7 @@ use tracing::{error_span, info, warn};
 
 use crate::summary::{Analysis, Event, Sample};
 
+static BUSY_CATEGORIES: &'static str = "Compositing LayoutPerform ScriptEvaluate ScriptParseHTML";
 static SPAN_CATEGORIES: &'static str = "Compositing LayoutPerform ScriptEvaluate ScriptParseHTML";
 static INSTANTANEOUS_CATEGORIES: &'static str =
     "TimeToFirstContentfulPaint TimeToFirstPaint TimeToInteractive";
@@ -206,7 +207,7 @@ impl Sample for SampleAnalysis {
         &self.durations
     }
 
-    fn events(&self) -> eyre::Result<Vec<Event>> {
+    fn real_events(&self) -> eyre::Result<Vec<Event>> {
         let start = self
             .relevant_entries
             .iter()
@@ -230,9 +231,27 @@ impl Sample for SampleAnalysis {
             })
             .collect::<eyre::Result<Vec<_>>>()?;
 
-        // Add some synthetic events with our interpretations.
+        Ok(result)
+    }
+
+    fn synthetic_events(&self) -> eyre::Result<Vec<Event>> {
+        let real_events = self.real_events()?;
+        let start = self
+            .relevant_entries
+            .iter()
+            .map(|e| e.startTime)
+            .min()
+            .ok_or_eyre("No events")?;
         let start = Duration::from_nanos(start.try_into()?);
-        let mut result = result;
+
+        // Add some synthetic events with our interpretations.
+        let busy_events = real_events.iter().filter(|e| {
+            BUSY_CATEGORIES
+                .split(" ")
+                .find(|&name| name == e.name)
+                .is_some()
+        });
+        let mut result = Event::generate_merged_events(busy_events, "Busy")?;
         for name in INSTANTANEOUS_CATEGORIES.split(" ") {
             if let Some(mut event) = SampleAnalysis::unique_instantaneous_event_from_first_parse(
                 &self.relevant_entries,

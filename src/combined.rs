@@ -5,7 +5,7 @@ use serde_json::json;
 
 use crate::{
     json::{JsonTrace, TraceEvent},
-    summary::{Analysis, Sample},
+    summary::{Analysis, Event, Sample},
 };
 
 pub fn main(args: Vec<String>) -> eyre::Result<()> {
@@ -68,7 +68,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
             args: [("name".to_owned(), json!(name))].into_iter().collect(),
             ..Default::default()
         });
-        // For each of its samples, create a “thread”.
+        // For each of its samples, create two “threads”, one for synthetic events and one for real events.
         for (j, sample) in analysis.samples.into_iter().enumerate() {
             // Strip the longest path prefix across all samples and all commands, for brevity in Perfetto UI.
             let path = Path::new(sample.path()).canonicalize()?;
@@ -79,34 +79,52 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
                 bail!("Failed to strip longest path prefix")
             };
 
-            events.push(TraceEvent {
-                ph: "M".to_owned(),
-                name: "thread_name".to_owned(),
-                cat: "__metadata".to_owned(),
-                pid: i,
-                tid: j,
-                args: [("name".to_owned(), json!(path))].into_iter().collect(),
-                ..Default::default()
-            });
-            for event in sample.events()? {
+            struct TraceRow {
+                id: usize,
+                name: String,
+                events: Vec<Event>,
+            }
+            for row in [
+                TraceRow {
+                    id: j * 2 + 0,
+                    name: format!("{path} (real)"),
+                    events: sample.real_events()?,
+                },
+                TraceRow {
+                    id: j * 2 + 1,
+                    name: format!("{path} (synthetic)"),
+                    events: sample.synthetic_events()?,
+                },
+            ] {
                 events.push(TraceEvent {
-                    ts: event.start.as_micros().try_into()?,
-                    dur: match event.duration {
-                        Some(dur) => Some(dur.as_micros().try_into()?),
-                        None => None,
-                    },
-                    ph: if event.duration.is_some() {
-                        "X".to_owned()
-                    } else {
-                        "I".to_owned()
-                    },
-                    s: Some("t".to_owned()),
-                    name: event.name,
-                    cat: "content".to_owned(),
+                    ph: "M".to_owned(),
+                    name: "thread_name".to_owned(),
+                    cat: "__metadata".to_owned(),
                     pid: i,
-                    tid: j,
+                    tid: row.id,
+                    args: [("name".to_owned(), json!(row.name))].into_iter().collect(),
                     ..Default::default()
                 });
+                for event in row.events {
+                    events.push(TraceEvent {
+                        ts: event.start.as_micros().try_into()?,
+                        dur: match event.duration {
+                            Some(dur) => Some(dur.as_micros().try_into()?),
+                            None => None,
+                        },
+                        ph: if event.duration.is_some() {
+                            "X".to_owned()
+                        } else {
+                            "I".to_owned()
+                        },
+                        s: Some("t".to_owned()),
+                        name: event.name,
+                        cat: "content".to_owned(),
+                        pid: i,
+                        tid: row.id,
+                        ..Default::default()
+                    });
+                }
             }
         }
     }
