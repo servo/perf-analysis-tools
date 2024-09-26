@@ -15,7 +15,8 @@ use crate::{
 
 static PARSE_NAMES: &'static str = "ParseHTML";
 static SCRIPT_NAMES: &'static str = "EvaluateScript FunctionCall TimerFire";
-static LAYOUT_NAMES: &'static str = "UpdateLayoutTree Layout PrePaint Paint Layerize";
+static LAYOUT_NAMES: &'static str = "UpdateLayoutTree Layout PrePaint Paint";
+static RASTERISE_NAMES: &'static str = "Layerize"; // TODO: does not include rasterisation and compositing
 static METRICS: &'static [(&'static str, &'static str)] =
     &[("FP", "firstPaint"), ("FCP", "firstContentfulPaint")];
 
@@ -296,11 +297,17 @@ impl Sample for SampleAnalysis {
                 .find(|&name| name == e.name)
                 .is_some()
         });
+        let rasterise_events = real_events.iter().filter(|e| {
+            RASTERISE_NAMES
+                .split(" ")
+                .find(|&name| name == e.name)
+                .is_some()
+        });
         let mut result = [
             Event::generate_merged_events(parse_events, "Parse")?,
             Event::generate_merged_events(script_events, "Script")?,
             Event::generate_merged_events(layout_events, "Layout")?,
-            // TODO: paint events?
+            Event::generate_merged_events(rasterise_events, "Rasterise")?,
         ]
         .into_iter()
         .flatten()

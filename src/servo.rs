@@ -27,7 +27,7 @@ static INSTANTANEOUS_CATEGORIES: &'static str =
 static PARSE_EVENTS: &'static str = "ScriptParseHTML";
 static SCRIPT_EVENTS: &'static str = "ScriptEvaluate";
 static LAYOUT_EVENTS: &'static str = "LayoutPerform";
-static PAINT_EVENTS: &'static str = "Compositing";
+static RASTERISE_EVENTS: &'static str = "Compositing";
 static METRICS: &'static [(&'static str, &'static str)] = &[
     ("FP", "TimeToFirstPaint"),
     ("FCP", "TimeToFirstContentfulPaint"),
@@ -271,8 +271,8 @@ impl Sample for SampleAnalysis {
                 .find(|&name| name == e.name)
                 .is_some()
         });
-        let paint_events = real_events.iter().filter(|e| {
-            PAINT_EVENTS
+        let rasterise_events = real_events.iter().filter(|e| {
+            RASTERISE_EVENTS
                 .split(" ")
                 .find(|&name| name == e.name)
                 .is_some()
@@ -281,7 +281,7 @@ impl Sample for SampleAnalysis {
             Event::generate_merged_events(parse_events, "Parse")?,
             Event::generate_merged_events(script_events, "Script")?,
             Event::generate_merged_events(layout_events, "Layout")?,
-            Event::generate_merged_events(paint_events, "Paint")?,
+            Event::generate_merged_events(rasterise_events, "Rasterise")?,
         ]
         .into_iter()
         .flatten()
