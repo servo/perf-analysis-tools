@@ -1,0 +1,18 @@
+[workspace]
+
+[package]
+name = "analyse"
+edition = "2021"
+
+[dependencies]
+html5ever = "0.27.0"
+jane-eyre = "0.3.0"
+markup5ever_rcdom = "0.3.0"
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.128"
+serde_with = "3.9.0"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+[profile.release]
+debug = true
