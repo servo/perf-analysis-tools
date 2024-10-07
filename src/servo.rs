@@ -48,9 +48,12 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
     println!(">>> Synthetic and interpreted events");
     for synthetic_name in SYNTHETIC_NAMES.split(" ") {
         if let Ok(summary) = analysis.summary(|s| {
-            let Ok(events) = s.synthetic_events() else {
-                warn!("Failed to get synthetic events");
-                return None;
+            let events = match s.synthetic_events() {
+                Ok(events) => events,
+                Err(error) => {
+                    warn!(?error, "Failed to get synthetic events");
+                    return None;
+                }
             };
             let result = events
                 .iter()
