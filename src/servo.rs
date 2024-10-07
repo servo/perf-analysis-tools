@@ -123,9 +123,10 @@ fn analyse_sample(path: &str) -> eyre::Result<SampleAnalysis> {
     let Some(json) = json.trim().strip_prefix("window.TRACES = [") else {
         bail!("Failed to strip prefix");
     };
-    let Some(json) = json.trim().strip_suffix("];") else {
-        bail!("Failed to strip suffix");
-    };
+    let json = json.trim();
+    // If we automate Servo with SIGTERM, the HTML file will be truncated after the last trace
+    // entry, so if we can’t find the bracket etc, assume it’s just the end of the file.
+    let json = json.strip_suffix("];").unwrap_or(json);
     let Some(json) = json.trim().strip_suffix(",") else {
         bail!("Failed to strip trailing comma");
     };
