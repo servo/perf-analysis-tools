@@ -162,8 +162,8 @@ impl Display for Summary<Duration> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "n={}, μ={:?}, s={:?}, min={:?}, max={:?}",
-            self.n, self.mean, self.stdev, self.min, self.max
+            "{:?} (n={}, μ={:?}, s={:?}, min={:?}, max={:?})",
+            self.min, self.n, self.mean, self.stdev, self.min, self.max
         )
     }
 }
@@ -199,7 +199,10 @@ impl Display for Summary<f64> {
         let (max, max_unit) = value(self.max);
         write!(
             f,
-            "n={}, μ={:.*?}{}, s={:.*?}{}, min={:.*?}{}, max={:.*?}{}",
+            "{:.*?}{} (n={}, μ={:.*?}{}, s={:.*?}{}, min={:.*?}{}, max={:.*?}{})",
+            dp(self.min),
+            min,
+            min_unit,
             self.n,
             dp(self.mean),
             mean,
