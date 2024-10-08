@@ -3,11 +3,11 @@ Perf analysis tools
 
 ## How to analyse Servo HTML traces (`--profiler-trace-path`)
 
-Use the `servo` command:
+Use the `servo` command, where `<url>` is the same URL as the page you loaded:
 
 ```
 servo$ servo --profiler-trace-path=trace.html --print-pwm <url>
-analyse$ RUST_LOG=analyse=info cargo run -r servo <trace.html> [trace.html ...]
+analyse$ RUST_LOG=analyse=info cargo run -r servo <url> <trace.html> [trace.html ...]
 ```
 
 `--print-pwm` tells you in the terminal running Servo when you’ve waited long enough for the Time To Interactive metric to appear in your trace.

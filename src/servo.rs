@@ -25,6 +25,7 @@ static PARSE_NAMES: &'static str = "ScriptParseHTML";
 static SCRIPT_NAMES: &'static str = "ScriptEvaluate";
 static LAYOUT_NAMES: &'static str = "LayoutPerform";
 static RASTERISE_NAMES: &'static str = "Compositing";
+static NO_URL_NAMES: &'static str = "Compositing IpcReceiver";
 static METRICS: &'static [(&'static str, &'static str)] = &[
     ("FP", "TimeToFirstPaint"),
     ("FCP", "TimeToFirstContentfulPaint"),
@@ -70,12 +71,13 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
 }
 
 pub fn analyse_samples(args: &[String]) -> eyre::Result<Vec<SampleAnalysis>> {
-    let paths = args;
+    let url = args.iter().nth(0).unwrap().to_owned();
+    let paths = args.into_iter().skip(1).collect::<Vec<_>>();
 
     let mut samples = vec![];
     for (path, result) in paths
         .iter()
-        .map(|path| (path.to_owned(), analyse_sample(path)))
+        .map(|path| (path.to_owned(), analyse_sample(&url, path)))
         .collect::<Vec<_>>()
     {
         let span = error_span!("analyse", path = path);
@@ -90,7 +92,7 @@ pub fn analyse_samples(args: &[String]) -> eyre::Result<Vec<SampleAnalysis>> {
 }
 
 #[tracing::instrument(level = "error")]
-fn analyse_sample(path: &str) -> eyre::Result<SampleAnalysis> {
+fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
     info!("Analysing sample");
 
     let mut input = vec![];
@@ -137,7 +139,16 @@ fn analyse_sample(path: &str) -> eyre::Result<SampleAnalysis> {
             .cmp(&q.startTime)
             .then(p.endTime.cmp(&q.endTime))
     });
-    let relevant_entries = all_entries.clone();
+    let relevant_entries = all_entries
+        .iter()
+        .filter(|e| {
+            // Ignore any entries with the wrong .metadata.url, since they are for other iframes.
+            // Categories in NO_URL_NAMES have no .metadata.url.
+            e.metadata.as_ref().is_some_and(|m| m.url == url)
+                || NO_URL_NAMES.split(" ").find(|&n| n == e.category).is_some()
+        })
+        .cloned()
+        .collect::<Vec<_>>();
 
     let categories = relevant_entries
         .iter()
@@ -202,6 +213,15 @@ struct TraceEntry {
     category: String,
     startTime: usize,
     endTime: usize,
+    metadata: Option<Metadata>,
+    #[serde(flatten)]
+    _rest: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[allow(non_snake_case)]
+struct Metadata {
+    url: String,
     #[serde(flatten)]
     _rest: BTreeMap<String, Value>,
 }
