@@ -1,12 +1,13 @@
 #!/usr/bin/env zsh
-# Usage: benchmark-chromium.sh <path/to/chrome> <url> <run count>
+# Usage: benchmark-chromium.sh <path/to/chrome> <url> <run count> [path/to/results]
 set -euo pipefail
 
 chromium=$1; shift
 url=$1; shift
 run_count=$1; shift
 
-results=$(mktemp -d)
+results=${1-$(mktemp -d)}
+mkdir -p "$results"
 
 for i in {01..$run_count}; do
     echo ">>> $i"
