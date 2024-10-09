@@ -149,6 +149,13 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
         })
         .cloned()
         .collect::<Vec<_>>();
+    if relevant_entries
+        .iter()
+        .find(|e| e.metadata.as_ref().is_some_and(|m| m.url == url))
+        .is_none()
+    {
+        bail!("No entry with matching .metadata.url! Skipping sample");
+    }
 
     let categories = relevant_entries
         .iter()
