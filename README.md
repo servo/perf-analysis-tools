@@ -1,6 +1,30 @@
 Perf analysis tools
 ===================
 
+## How to replay page loads without relying on network traffic (Linux only)
+
+Create a `mitmproxy` group and add it to your user’s supplementary groups:
+
+```
+$ sudo groupadd mitmproxy
+$ sudo usermod -aG mitmproxy $(whoami)
+```
+
+Or if you are on NixOS:
+
+```
+users.groups.mitmproxy = {
+  members = [ "<your username>" ];
+};
+```
+
+Then record a dump and replay it, following the prompts:
+
+```
+$ sudo ./start-mitmproxy.sh record path/to/example.com.dump
+$ sudo ./start-mitmproxy.sh replay path/to/example.com.dump
+```
+
 ## How to analyse Servo HTML traces (`--profiler-trace-path`)
 
 Use the `servo` command, where `<url>` is the same URL as the page you loaded:
