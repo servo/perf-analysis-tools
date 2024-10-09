@@ -13,7 +13,11 @@ fn main() -> eyre::Result<()> {
     jane_eyre::install()?;
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
-        .with(EnvFilter::from_default_env())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive("analyse=info".parse()?)
+                .from_env_lossy(),
+        )
         .init();
 
     let mode = args().nth(1).unwrap();
