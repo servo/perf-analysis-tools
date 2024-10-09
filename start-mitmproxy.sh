@@ -42,7 +42,8 @@ if [ "$mode" = record ]; then
     read -r _
     # `block_global=false` avoids “Warn: [17:51:27.613] Client connection from <IPv6 address> killed by block_global option.”
     # <https://stackoverflow.com/a/52281899>
-    mitmproxy --set block_global=false --save-stream-file "$dump_path"
+    # `--anticomp` avoids saving responses with e.g. ‘Content-Encoding: zstd’, which makes Servo render garbage as text.
+    mitmproxy --set block_global=false --anticomp --save-stream-file "$dump_path"
 elif [ "$mode" = replay ]; then
     echo 'Now we can replay the requests with `mitmproxy --server-replay`:'
     echo '1. When you finish reading, press <Enter>'
