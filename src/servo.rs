@@ -157,16 +157,6 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
         bail!("No entry with matching .metadata.url! Skipping sample");
     }
 
-    let categories = relevant_entries
-        .iter()
-        .map(|e| e.category.clone())
-        .collect::<BTreeSet<_>>();
-    if !categories.contains("TimeToInteractive") {
-        warn!(
-            "No entry with category TimeToInteractive! Did you let the page idle for ten seconds?"
-        );
-    }
-
     let mut durations = BTreeMap::default();
     let interesting_categories =
         format!("{PARSE_NAMES} {SCRIPT_NAMES} {LAYOUT_NAMES} {RASTERISE_NAMES}");
