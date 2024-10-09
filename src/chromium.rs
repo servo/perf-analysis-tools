@@ -13,6 +13,7 @@ use crate::{
     summary::{Analysis, Event, Sample, SYNTHETIC_NAMES},
 };
 
+static RENDERER_NAMES: &'static str = "ParseHTML EvaluateScript FunctionCall TimerFire UpdateLayoutTree Layout PrePaint Paint Layerize"; // TODO: does not include rasterisation and compositing
 static PARSE_NAMES: &'static str = "ParseHTML";
 static SCRIPT_NAMES: &'static str = "EvaluateScript FunctionCall TimerFire";
 static LAYOUT_NAMES: &'static str = "UpdateLayoutTree Layout PrePaint Paint";
@@ -145,8 +146,7 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
     }
 
     let mut durations = BTreeMap::default();
-    let interesting_event_names =
-        format!("{PARSE_NAMES} {SCRIPT_NAMES} {LAYOUT_NAMES} {RASTERISE_NAMES}");
+    let interesting_event_names = format!("{RENDERER_NAMES}");
     for name in interesting_event_names.split(" ") {
         let duration = SampleAnalysis::sum_duration(&result, name)?;
         debug!("{name}: {:?}", duration);
@@ -212,6 +212,12 @@ impl Sample for SampleAnalysis {
         let start = Duration::from_micros(start.try_into()?);
 
         // Add some synthetic events with our interpretations.
+        let renderer_events = real_events.iter().filter(|e| {
+            RENDERER_NAMES
+                .split(" ")
+                .find(|&name| name == e.name)
+                .is_some()
+        });
         let parse_events = real_events.iter().filter(|e| {
             PARSE_NAMES
                 .split(" ")
@@ -237,6 +243,7 @@ impl Sample for SampleAnalysis {
                 .is_some()
         });
         let mut result = [
+            Event::generate_merged_events(renderer_events, "Renderer")?,
             Event::generate_merged_events(parse_events, "Parse")?,
             Event::generate_merged_events(script_events, "Script")?,
             Event::generate_merged_events(layout_events, "Layout")?,

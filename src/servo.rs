@@ -21,6 +21,7 @@ use tracing::{error_span, info, warn};
 
 use crate::summary::{Analysis, Event, Sample, SYNTHETIC_NAMES};
 
+static RENDERER_NAMES: &'static str = "ScriptParseHTML ScriptEvaluate LayoutPerform Compositing";
 static PARSE_NAMES: &'static str = "ScriptParseHTML";
 static SCRIPT_NAMES: &'static str = "ScriptEvaluate";
 static LAYOUT_NAMES: &'static str = "LayoutPerform";
@@ -158,8 +159,7 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
     }
 
     let mut durations = BTreeMap::default();
-    let interesting_categories =
-        format!("{PARSE_NAMES} {SCRIPT_NAMES} {LAYOUT_NAMES} {RASTERISE_NAMES}");
+    let interesting_categories = format!("{RENDERER_NAMES}");
     for category in interesting_categories.split(" ") {
         let duration = SampleAnalysis::sum_duration(&relevant_entries, category)?;
         durations.insert(category.to_owned(), duration);
@@ -266,6 +266,12 @@ impl Sample for SampleAnalysis {
         let start = Duration::from_nanos(start.try_into()?);
 
         // Add some synthetic events with our interpretations.
+        let renderer_events = real_events.iter().filter(|e| {
+            RENDERER_NAMES
+                .split(" ")
+                .find(|&name| name == e.name)
+                .is_some()
+        });
         let parse_events = real_events.iter().filter(|e| {
             PARSE_NAMES
                 .split(" ")
@@ -291,6 +297,7 @@ impl Sample for SampleAnalysis {
                 .is_some()
         });
         let mut result = [
+            Event::generate_merged_events(renderer_events, "Renderer")?,
             Event::generate_merged_events(parse_events, "Parse")?,
             Event::generate_merged_events(script_events, "Script")?,
             Event::generate_merged_events(layout_events, "Layout")?,

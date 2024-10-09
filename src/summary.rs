@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fmt::Display, time::Duration};
 
 use jane_eyre::eyre::{self, OptionExt};
 
-pub static SYNTHETIC_NAMES: &'static str = "Parse Script Layout Rasterise FP FCP";
+pub static SYNTHETIC_NAMES: &'static str = "Renderer Parse Script Layout Rasterise FP FCP";
 
 pub trait Sample {
     fn path(&self) -> &str;
