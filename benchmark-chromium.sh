@@ -18,7 +18,11 @@ for i in {01..$run_count}; do
     # <https://peter.sh/experiments/chromium-command-line-switches/#user-data-dir>
     # <https://peter.sh/experiments/chromium-command-line-switches/#no-first-run>
     profile=$(mktemp -d)
-    "$chromium" --user-data-dir="$profile" --no-first-run --trace-startup --trace-startup-file="$results/chrome$i.pftrace" "$url" &
+    "$chromium" \
+        --user-data-dir="$profile" --no-first-run \
+        --trace-startup --trace-startup-file="$results/chrome$i.pftrace" \
+        --ignore-certificate-errors \
+        "$url" &
     pid=$!
 
     # Resize the visible Chromium window with our pid to the same size as default servoshell.

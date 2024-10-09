@@ -12,7 +12,10 @@ mkdir -p "$results"
 for i in {01..$run_count}; do
     echo ">>> $i"
 
-    "$servo" --profiler-trace-path="$results/trace$i.html" --print-pwm "$url" &
+    "$servo" \
+        --profiler-trace-path="$results/trace$i.html" --print-pwm \
+        --ignore-certificate-errors \
+        "$url" &
     pid=$!
 
     sleep 5
