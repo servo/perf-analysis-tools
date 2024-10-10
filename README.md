@@ -1,6 +1,30 @@
 Perf analysis tools
 ===================
 
+## How to run Servo or Chromium
+
+```
+$ ./benchmark-servo.sh ~/path/to/servoshell http://example.com 30 ./example.com.servo
+$ ./benchmark-chromium.sh google-chrome-stable http://example.com 30 ./example.com.chromium
+```
+
+We also recommend configuring your window manager to move the windows to a secondary monitor, where they can be kept visible but not focused. For example, in i3:
+
+```
+$ cat ~/.config/i3/config
+for_window [instance="^google-chrome [(]" class="^Google-chrome$"] floating enable
+for_window [instance="^servo$" class="^servo$"] floating enable
+assign [instance="^google-chrome [(]" class="^Google-chrome$"] 9
+assign [instance="^servo$" class="^servo$"] 9
+
+$ cat custom-servo-window-commands.sh
+xdotool search --sync --onlyvisible --pid $1 --class servo windowmove $((2560+2)) $((0+28))
+
+$ cat custom-chromium-window-commands.sh
+xdotool search --sync --onlyvisible --pid $1 --class google-chrome windowmove $((2560+2)) $((0+28))
+i3-msg 'workspace back_and_forth'
+```
+
 ## How to replay page loads without relying on network traffic (Linux only)
 
 Create a `mitmproxy` group and add it to your user’s supplementary groups:

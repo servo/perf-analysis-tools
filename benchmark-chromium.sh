@@ -1,10 +1,10 @@
 #!/usr/bin/env zsh
 # Usage: benchmark-chromium.sh <path/to/chrome> <url> <run count> [path/to/results]
 set -euo pipefail
-
 chromium=$1; shift
 url=$1; shift
 run_count=$1; shift
+script_dir=${0:a:h}
 
 results=${1-$(mktemp -d)}
 mkdir -p "$results"
@@ -28,6 +28,7 @@ for i in {01..$run_count}; do
     # Resize the visible Chromium window with our pid to the same size as default servoshell.
     # TODO: can we have both Servo and Chromium windows at the same size before loading a page?
     xdotool search --sync --onlyvisible --pid $pid --class google-chrome windowsize 1024 740
+    "$script_dir/custom-chromium-window-commands.sh" $pid
 
     sleep 5
     # Close that window gracefully. Chromium does not write a trace file if sent a SIGTERM.
