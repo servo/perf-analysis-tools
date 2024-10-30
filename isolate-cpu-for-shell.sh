@@ -1,8 +1,8 @@
 #!/usr/bin/env zsh
 # Based on: <https://testbit.eu/2023/cgroup-cpuset>
-# To enable: benchmarking.sh <pid>
-#       e.g. benchmarking.sh $$
-# To disable: benchmarking.sh
+# To enable: isolate-cpu-for-shell.sh <pid>
+#       e.g. isolate-cpu-for-shell.sh $$
+# To disable: isolate-cpu-for-shell.sh
 set -xeuo pipefail
 
 if test -r /proc/"${1:-:???:}"/exe ; then
