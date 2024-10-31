@@ -8,6 +8,10 @@ script_dir=${0:a:h}
 
 results=${1-$(mktemp -d)}
 mkdir -p "$results"
+if [ -e "$results/done" ]; then
+    echo ">>> $results is done; skipping"
+    exit
+fi
 
 for i in {01..$run_count}; do
     echo ">>> $i"
@@ -32,4 +36,5 @@ for i in {01..$run_count}; do
     echo
 done
 
+touch "$results/done"
 echo "Results: $results"
