@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fmt::Display, time::Duration};
 
 use jane_eyre::eyre::{self, OptionExt};
+use serde::Serialize;
 
 pub static SYNTHETIC_NAMES: &'static str = "Renderer Parse Script Layout Rasterise FP FCP";
 
@@ -22,13 +23,21 @@ pub struct Analysis<SampleType> {
     pub samples: Vec<SampleType>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Summary<T> {
     pub n: usize,
     pub mean: T,
     pub stdev: T,
     pub min: T,
     pub max: T,
+}
+
+#[derive(Debug, Serialize)]
+pub struct JsonSummary {
+    pub name: String,
+    pub raw: Summary<f64>,
+    pub full: String,
+    pub representative: String,
 }
 
 impl Event {
@@ -158,64 +167,74 @@ impl<SampleType> Analysis<SampleType> {
     }
 }
 
-impl Display for Summary<Duration> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:?} (n={}, μ={:?}, s={:?}, min={:?}, max={:?})",
-            self.min, self.n, self.mean, self.stdev, self.min, self.max
+impl Summary<f64> {
+    fn value(x: f64) -> (f64, &'static str) {
+        if x >= 1.0 {
+            (x, "s")
+        } else if x * 1000.0 >= 1.0 {
+            (x * 1000.0, "ms")
+        } else if x * 1000000.0 >= 1.0 {
+            (x * 1000000.0, "μs")
+        } else {
+            (x * 1000000000.0, "ns")
+        }
+    }
+
+    fn dp(x: f64) -> usize {
+        let (value, _) = Self::value(x);
+        if value >= 1000.0 {
+            0
+        } else if value >= 100.0 {
+            1
+        } else if value >= 10.0 {
+            2
+        } else {
+            3
+        }
+    }
+
+    pub fn fmt_representative(&self) -> String {
+        let (min, min_unit) = Self::value(self.min);
+
+        format!("{:.*?}{}", Self::dp(self.min), min, min_unit)
+    }
+
+    pub fn fmt_full(&self) -> String {
+        let (mean, mean_unit) = Self::value(self.mean);
+        let (stdev, stdev_unit) = Self::value(self.stdev);
+        let (min, min_unit) = Self::value(self.min);
+        let (max, max_unit) = Self::value(self.max);
+
+        format!(
+            "n={}, μ={:.*?}{}, s={:.*?}{}, min={:.*?}{}, max={:.*?}{}",
+            self.n,
+            Self::dp(self.mean),
+            mean,
+            mean_unit,
+            Self::dp(self.stdev),
+            stdev,
+            stdev_unit,
+            Self::dp(self.min),
+            min,
+            min_unit,
+            Self::dp(self.max),
+            max,
+            max_unit,
         )
+    }
+
+    pub fn to_json(&self, name: &str) -> JsonSummary {
+        JsonSummary {
+            name: name.to_owned(),
+            raw: self.clone(),
+            full: self.fmt_full(),
+            representative: self.fmt_representative(),
+        }
     }
 }
 
 impl Display for Summary<f64> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let value = |x| {
-            if x >= 1.0 {
-                (x, "s")
-            } else if x * 1000.0 >= 1.0 {
-                (x * 1000.0, "ms")
-            } else if x * 1000000.0 >= 1.0 {
-                (x * 1000000.0, "μs")
-            } else {
-                (x * 1000000000.0, "ns")
-            }
-        };
-        let dp = |x| {
-            let (value, _) = value(x);
-            if value >= 1000.0 {
-                0
-            } else if value >= 100.0 {
-                1
-            } else if value >= 10.0 {
-                2
-            } else {
-                3
-            }
-        };
-        let (mean, mean_unit) = value(self.mean);
-        let (stdev, stdev_unit) = value(self.stdev);
-        let (min, min_unit) = value(self.min);
-        let (max, max_unit) = value(self.max);
-        write!(
-            f,
-            "{:.*?}{} (n={}, μ={:.*?}{}, s={:.*?}{}, min={:.*?}{}, max={:.*?}{})",
-            dp(self.min),
-            min,
-            min_unit,
-            self.n,
-            dp(self.mean),
-            mean,
-            mean_unit,
-            dp(self.stdev),
-            stdev,
-            stdev_unit,
-            dp(self.min),
-            min,
-            min_unit,
-            dp(self.max),
-            max,
-            max_unit,
-        )
+        write!(f, "{} ({})", self.fmt_representative(), self.fmt_full())
     }
 }

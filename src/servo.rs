@@ -16,7 +16,7 @@ use html5ever::{
 use jane_eyre::eyre::{self, bail, OptionExt};
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tracing::{error_span, info, warn};
 
 use crate::summary::{Analysis, Event, Sample, SYNTHETIC_NAMES};
@@ -41,13 +41,16 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
         .iter()
         .flat_map(|s| s.durations.keys())
         .collect::<BTreeSet<_>>();
-    println!(">>> Real events");
+
+    let mut real_events = vec![];
+    let mut synthetic_and_interpreted_events = vec![];
+
     for name in durations_keys {
         if let Ok(summary) = analysis.summary(|s| s.durations.get(name).map(|d| d.as_secs_f64())) {
-            println!("{name}: {}", summary);
+            real_events.push(summary.to_json(name));
         };
     }
-    println!(">>> Synthetic and interpreted events");
+
     for synthetic_name in SYNTHETIC_NAMES.split(" ") {
         if let Ok(summary) = analysis.summary(|s| {
             let events = match s.synthetic_events() {
@@ -64,8 +67,33 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
                 .sum::<f64>();
             Some(result)
         }) {
-            println!("{synthetic_name}: {}", summary);
+            synthetic_and_interpreted_events.push(summary.to_json(synthetic_name));
         }
+    }
+
+    println!(
+        "{}",
+        json! ({
+            "real_events": real_events,
+            "synthetic_and_interpreted_events": synthetic_and_interpreted_events,
+        })
+        .to_string()
+    );
+    println!();
+    println!(">>> Real events");
+    for summary in real_events {
+        println!(
+            "{}: {} ({})",
+            summary.name, summary.representative, summary.full
+        );
+    }
+    println!();
+    println!(">>> Synthetic and interpreted events");
+    for summary in synthetic_and_interpreted_events {
+        println!(
+            "{}: {} ({})",
+            summary.name, summary.representative, summary.full
+        );
     }
 
     Ok(())
