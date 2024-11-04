@@ -31,7 +31,7 @@ for i in {01..$run_count}; do
 
     # Resize the visible Chromium window with our pid to the same size as default servoshell.
     # TODO: can we have both Servo and Chromium windows at the same size before loading a page?
-    xdotool search --sync --onlyvisible --pid $pid --class google-chrome windowsize 1024 740
+    xdotool search --sync --all --pid $pid --role browser windowsize 1024 740
     "$script_dir/custom-chromium-window-commands.sh" $pid
 
     sleep 10
@@ -39,7 +39,7 @@ for i in {01..$run_count}; do
     printf 'Closing window'
     while kill -0 $pid 2> /dev/null; do
         # No --sync here, because the window may be gone by now.
-        xdotool search --onlyvisible --pid $pid --class google-chrome windowquit || :
+        xdotool search --all --pid $pid --role browser windowquit || :
         printf .
         sleep 1
     done
