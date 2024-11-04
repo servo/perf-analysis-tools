@@ -24,7 +24,7 @@ for i in {01..$run_count}; do
 
     "$script_dir/custom-servo-window-commands.sh" $pid
 
-    sleep 5
+    sleep 10
     printf 'Closing window'
     while kill -0 $pid 2> /dev/null; do
         kill $pid

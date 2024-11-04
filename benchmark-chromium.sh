@@ -34,7 +34,7 @@ for i in {01..$run_count}; do
     xdotool search --sync --onlyvisible --pid $pid --class google-chrome windowsize 1024 740
     "$script_dir/custom-chromium-window-commands.sh" $pid
 
-    sleep 5
+    sleep 10
     # Close that window gracefully. Chromium does not write a trace file if sent a SIGTERM.
     printf 'Closing window'
     while kill -0 $pid 2> /dev/null; do
