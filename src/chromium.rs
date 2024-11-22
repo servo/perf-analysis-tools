@@ -223,6 +223,7 @@ impl Sample for SampleAnalysis {
                     name: e.name.clone(),
                     start: Duration::from_micros(start.try_into()?),
                     duration,
+                    metadata: BTreeMap::default(),
                 })
             })
             .collect::<eyre::Result<Vec<_>>>()?;
@@ -328,6 +329,7 @@ impl SampleAnalysis {
             name: result_name.to_owned(),
             start,
             duration: Some(duration),
+            metadata: BTreeMap::default(),
         })
     }
 

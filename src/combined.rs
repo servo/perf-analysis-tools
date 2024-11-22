@@ -101,7 +101,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
                     name: "thread_name".to_owned(),
                     cat: "__metadata".to_owned(),
                     pid: i,
-                    tid: row.id,
+                    tid: row.id.try_into()?,
                     args: [("name".to_owned(), json!(row.name))].into_iter().collect(),
                     ..Default::default()
                 });
@@ -121,7 +121,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
                         name: event.name,
                         cat: "content".to_owned(),
                         pid: i,
-                        tid: row.id,
+                        tid: row.id.try_into()?,
                         ..Default::default()
                     });
                 }

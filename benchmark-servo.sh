@@ -13,6 +13,7 @@ if [ -e "$results/done" ]; then
     exit
 fi
 
+export SERVO_TRACING='[ScriptParseHTML]=info,[ScriptEvaluate]=info,[LayoutPerform]=info,[Compositing]=info'
 for i in {01..$run_count}; do
     echo ">>> $i"
 
@@ -32,6 +33,7 @@ for i in {01..$run_count}; do
         sleep 1
     done
     echo
+    mv servo.pftrace "$results/servo$i.pftrace"
     echo
     echo
 done
