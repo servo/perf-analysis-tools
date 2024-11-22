@@ -22,7 +22,7 @@ pub struct TraceEvent {
     pub name: String,
     pub cat: String,
     pub pid: usize,
-    pub tid: usize,
+    pub tid: isize,
     pub args: BTreeMap<String, Value>,
     #[serde(flatten)]
     pub _rest: BTreeMap<String, Value>,

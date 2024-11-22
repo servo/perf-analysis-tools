@@ -13,11 +13,21 @@ if [ -e "$results/done" ]; then
     exit
 fi
 
+export SERVO_TRACING='[ScriptParseHTML]=info,[ScriptEvaluate]=info,[LayoutPerform]=info,[Compositing]=info'
 for i in {01..$run_count}; do
     echo ">>> $i"
 
+    # Write a manifest that pairs the HTML and Perfetto traces of each run,
+    # both as paths relative to the directory containing the manifest file.
+    html_trace=trace$i.html
+    perfetto_trace=servo$i.pftrace
+    jq -en \
+        --arg html "$html_trace" \
+        --arg perfetto "$perfetto_trace" \
+        '{$html, $perfetto}' > "$results/manifest$i.json"
+
     "$servo" \
-        --profiler-trace-path="$results/trace$i.html" --print-pwm \
+        --profiler-trace-path="$results/$html_trace" --print-pwm \
         --ignore-certificate-errors \
         "$url" &
     pid=$!
@@ -32,6 +42,7 @@ for i in {01..$run_count}; do
         sleep 1
     done
     echo
+    mv servo.pftrace "$results/$perfetto_trace"
     echo
     echo
 done

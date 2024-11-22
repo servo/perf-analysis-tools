@@ -3,26 +3,23 @@ Perf analysis tools
 
 ## How to run Servo or Chromium
 
+Make sure you build Servo with `--features tracing-perfetto`. When benchmarking the root of a site, be sure to include the trailing slash any time a URL is needed.
+
+Run benchmarks as follows:
+
 ```
-$ ./benchmark-servo.sh ~/path/to/servoshell http://example.com 30 ./example.com.servo
-$ ./benchmark-chromium.sh google-chrome-stable http://example.com 30 ./example.com.chromium
+$ ./benchmark-servo.sh ~/path/to/servoshell http://example.com/ 30 ./example.com.servo
+$ ./benchmark-chromium.sh google-chrome-stable http://example.com/ 30 ./example.com.chromium
 ```
 
-We also recommend configuring your window manager to move the windows to a secondary monitor, where they can be kept visible but not focused. For example, in i3:
+We also recommend configuring your window manager to move the windows to a secondary monitor, where they can be kept visible but not focused. For example, in [i3](https://i3wm.org/docs/userguide.html), where `7` is a workspace that has windows but is not visible on any monitor:
 
 ```
 $ cat ~/.config/i3/config
 for_window [instance="^google-chrome [(]" class="^Google-chrome$"] floating enable
 for_window [instance="^servo$" class="^servo$"] floating enable
-assign [instance="^google-chrome [(]" class="^Google-chrome$"] 9
-assign [instance="^servo$" class="^servo$"] 9
-
-$ cat custom-servo-window-commands.sh
-xdotool search --sync --onlyvisible --pid $1 --class servo windowmove $((2560+2)) $((0+28))
-
-$ cat custom-chromium-window-commands.sh
-xdotool search --sync --onlyvisible --pid $1 --class google-chrome windowmove $((2560+2)) $((0+28))
-i3-msg 'workspace back_and_forth'
+assign [instance="^google-chrome [(]" class="^Google-chrome$"] 7
+assign [instance="^servo$" class="^servo$"] 7
 ```
 
 ## How to replay page loads without relying on network traffic (Linux only)
@@ -49,12 +46,13 @@ $ sudo ./start-mitmproxy.sh record path/to/example.com.dump
 $ sudo ./start-mitmproxy.sh replay path/to/example.com.dump
 ```
 
-## How to analyse Servo HTML traces (`--profiler-trace-path`)
+## How to analyse Servo’s HTML and Perfetto traces
+
+Both trace formats are required for now, because some metrics like TimeToFirstPaint and TimeToFirstContentfulPaint are only in the HTML traces, while some events like ScriptEvaluate are only in the Perfetto traces.
 
 Use the `servo` command, where `<url>` is the same URL as the page you loaded:
 
 ```
-$ path/to/servo --profiler-trace-path=trace.html --print-pwm <url>
 $ RUST_LOG=analyse=info cargo run -r servo <url> <trace.html> [trace.html ...]
 ```
 
@@ -65,7 +63,6 @@ $ RUST_LOG=analyse=info cargo run -r servo <url> <trace.html> [trace.html ...]
 Use the `chromium` command, where `<url>` is the same URL as the page you loaded:
 
 ```
-$ google-chrome-stable --trace-startup --trace-startup-file=chrome.pftrace <url>
 $ python traceconv json chrome.pftrace chrome.json
 $ RUST_LOG=analyse=info cargo run -r chromium <url> <chrome.json> [chrome.json ...]
 ```

@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fmt::Display, time::Duration};
 
 use jane_eyre::eyre::{self, OptionExt};
+use perfetto_protos::debug_annotation::DebugAnnotation;
 use serde::Serialize;
 
 pub static SYNTHETIC_NAMES: &'static str = "Renderer Parse Script Layout Rasterise FP FCP";
@@ -11,12 +12,13 @@ pub trait Sample {
     fn synthetic_events(&self) -> eyre::Result<Vec<Event>>;
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Event {
     pub name: String,
     pub start: Duration,
     /// Some if the event is a span, None if the event is instantaneous.
     pub duration: Option<Duration>,
+    pub metadata: BTreeMap<String, DebugAnnotation>,
 }
 
 pub struct Analysis<SampleType> {
@@ -59,9 +61,11 @@ impl Event {
         }
 
         let mut edges: BTreeMap<Duration, Vec<Edge>> = BTreeMap::default();
+        let mut metadata = BTreeMap::default();
         for event in events {
             edges.entry(event.start).or_default().push(Edge::Start);
             edges.entry(event.end()).or_default().push(Edge::End);
+            metadata.extend(event.metadata.clone());
         }
 
         let mut result = vec![];
@@ -82,6 +86,7 @@ impl Event {
                     name: merged_name.to_owned(),
                     start: start_time,
                     duration: Some(duration),
+                    metadata: metadata.clone(),
                 });
             } else if active_count == 0 && new_active_count > 0 {
                 start_time = Some(time);
@@ -101,21 +106,35 @@ fn test_generate_merged_events() -> eyre::Result<()> {
                 name: "".to_owned(),
                 start: Duration::from_secs(1),
                 duration: None,
+                metadata: BTreeMap::default(),
             },
             Event {
                 name: "".to_owned(),
                 start: Duration::from_secs(2),
                 duration: Some(Duration::from_secs(2)),
+                metadata: [
+                    ("foo".to_owned(), DebugAnnotation::default()),
+                    ("bar".to_owned(), DebugAnnotation::default()),
+                ]
+                .into_iter()
+                .collect(),
             },
             Event {
                 name: "".to_owned(),
                 start: Duration::from_secs(3),
                 duration: Some(Duration::from_secs(2)),
+                metadata: BTreeMap::default(),
             },
             Event {
                 name: "".to_owned(),
                 start: Duration::from_secs(5),
                 duration: Some(Duration::from_secs(2)),
+                metadata: [
+                    ("bar".to_owned(), DebugAnnotation::default()),
+                    ("baz".to_owned(), DebugAnnotation::default()),
+                ]
+                .into_iter()
+                .collect(),
             },
         ]
         .iter(),
@@ -126,7 +145,14 @@ fn test_generate_merged_events() -> eyre::Result<()> {
         [Event {
             name: "".to_owned(),
             start: Duration::from_secs(2),
-            duration: Some(Duration::from_secs(5))
+            duration: Some(Duration::from_secs(5)),
+            metadata: [
+                ("foo".to_owned(), DebugAnnotation::default()),
+                ("bar".to_owned(), DebugAnnotation::default()),
+                ("baz".to_owned(), DebugAnnotation::default()),
+            ]
+            .into_iter()
+            .collect(),
         },]
     );
     Ok(())

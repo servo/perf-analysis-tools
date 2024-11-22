@@ -1,5 +1,6 @@
 mod chromium;
 mod combined;
+mod dom;
 mod json;
 mod servo;
 mod summary;
