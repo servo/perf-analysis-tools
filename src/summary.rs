@@ -1,12 +1,17 @@
-use std::{collections::BTreeMap, fmt::Display, time::Duration};
+use std::{
+    collections::BTreeMap,
+    fmt::{Display, Write},
+    time::Duration,
+};
 
 use jane_eyre::eyre::{self, OptionExt};
 use perfetto_protos::debug_annotation::DebugAnnotation;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 pub static SYNTHETIC_NAMES: &'static str = "Renderer Parse Script Layout Rasterise FP FCP";
 
-pub trait Sample {
+pub trait Individual {
     fn path(&self) -> &str;
     fn real_events(&self) -> eyre::Result<Vec<Event>>;
     fn synthetic_events(&self) -> eyre::Result<Vec<Event>>;
@@ -21,11 +26,11 @@ pub struct Event {
     pub metadata: BTreeMap<String, DebugAnnotation>,
 }
 
-pub struct Analysis<SampleType> {
-    pub samples: Vec<SampleType>,
+pub struct Analysis<IndividualType> {
+    pub individuals: Vec<IndividualType>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Summary<T> {
     pub n: usize,
     pub mean: T,
@@ -34,7 +39,13 @@ pub struct Summary<T> {
     pub max: T,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct JsonSummaries {
+    pub real_events: Vec<JsonSummary>,
+    pub synthetic_and_interpreted_events: Vec<JsonSummary>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct JsonSummary {
     pub name: String,
     pub raw: Summary<f64>,
@@ -158,13 +169,13 @@ fn test_generate_merged_events() -> eyre::Result<()> {
     Ok(())
 }
 
-impl<SampleType> Analysis<SampleType> {
+impl<IndividualType> Analysis<IndividualType> {
     pub fn summary<T: Into<Option<f64>>>(
         &self,
-        mut getter: impl FnMut(&SampleType) -> T,
+        mut getter: impl FnMut(&IndividualType) -> T,
     ) -> eyre::Result<Summary<f64>> {
         let xs = self
-            .samples
+            .individuals
             .iter()
             .filter_map(|x| getter(x).into())
             .collect::<Vec<f64>>();
@@ -184,7 +195,7 @@ impl<SampleType> Analysis<SampleType> {
             .ok_or_eyre("No maximum")?;
 
         Ok(Summary {
-            n: self.samples.len(),
+            n: self.individuals.len(),
             mean,
             stdev,
             min,
@@ -262,5 +273,34 @@ impl Summary<f64> {
 impl Display for Summary<f64> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} ({})", self.fmt_representative(), self.fmt_full())
+    }
+}
+
+impl JsonSummaries {
+    pub fn json(&self) -> String {
+        json!(self).to_string()
+    }
+
+    pub fn text(&self) -> eyre::Result<String> {
+        let mut result = String::default();
+        writeln!(result, ">>> Real events")?;
+        for summary in self.real_events.iter() {
+            writeln!(
+                result,
+                "{}: {} ({})",
+                summary.name, summary.representative, summary.full
+            )?;
+        }
+        writeln!(result)?;
+        writeln!(result, ">>> Synthetic and interpreted events")?;
+        for summary in self.synthetic_and_interpreted_events.iter() {
+            writeln!(
+                result,
+                "{}: {} ({})",
+                summary.name, summary.representative, summary.full
+            )?;
+        }
+
+        Ok(result)
     }
 }

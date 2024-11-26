@@ -1,0 +1,34 @@
+# How many times to run the browser in each sample.
+sample_size = 30
+
+# Command for traceconv. The example below is for NixOS.
+traceconv_command = ["steam-run", "../../traceconv"]
+
+# Command for setting up CPU isolation. Must accept the same arguments as isolate-cpu-for-shell.sh.
+# isolate_cpu_command = [":"]  # on platforms without CPU isolation support
+isolate_cpu_command = ["sudo", "../../isolate-cpu-for-shell.sh"]  # on Linux
+
+# Define your CPU configs here.
+# - Syntax is `key = [list of CPUs]`
+# - Dots in the key must be quoted
+[cpu_configs]
+2cpu = [14, 15]
+4cpu = [12, 13, 14, 15]
+6cpu = [10, 11, 12, 13, 14, 15]
+8cpu = [8, 9, 10, 11, 12, 13, 14, 15]
+
+# Define your sites here.
+# - Syntax is `key = "url"`
+# - Dots in the key must be quoted
+# - If `url` has the root path (`/`), the trailing slash must be included
+[sites]
+"servo.org" = "https://servo.org/"
+
+# Define your engines here.
+# - Syntax is `key = { type = "Servo|Chromium", path = "/path/to/browser" }`
+# - Dots in the key must be quoted
+# - If `path` has no slashes, it represents a command in your PATH
+[engines]
+"servo1" = { type = "Servo", path = "/path/to/servo1/servo" }
+"servo2" = { type = "Servo", path = "/path/to/servo2/servo" }
+"chromium" = { type = "Chromium", path = "google-chrome-stable" }

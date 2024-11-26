@@ -15,12 +15,12 @@ use perfetto_protos::{
 };
 use protobuf::Message;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use tracing::{debug, error_span, info, trace, warn};
 
 use crate::{
     dom::{make_html_tag_name, parse, tendril_to_str, Traverse},
-    summary::{Analysis, Event, Sample, SYNTHETIC_NAMES},
+    summary::{Analysis, Event, Individual, JsonSummaries, SYNTHETIC_NAMES},
 };
 
 static RENDERER_NAMES: &'static str = "ScriptParseHTML ScriptEvaluate LayoutPerform Compositing";
@@ -40,10 +40,22 @@ static METRICS: &'static [(&'static str, &'static str)] = &[
 ];
 
 pub fn main(args: Vec<String>) -> eyre::Result<()> {
-    let samples = analyse_samples(&args)?;
-    let analysis = Analysis { samples };
+    let summaries = compute_summaries(args)?;
+
+    println!("{}", summaries.json());
+    println!();
+    println!("{}", summaries.text()?);
+
+    Ok(())
+}
+
+#[tracing::instrument(level = "error")]
+pub fn compute_summaries(args: Vec<String>) -> Result<JsonSummaries, eyre::Error> {
+    info!("Computing summaries");
+    let individuals = analyse_individuals(&args)?;
+    let analysis = Analysis { individuals };
     let durations_keys = analysis
-        .samples
+        .individuals
         .iter()
         .flat_map(|s| s.durations.keys())
         .collect::<BTreeSet<_>>();
@@ -77,58 +89,36 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
         }
     }
 
-    println!(
-        "{}",
-        json! ({
-            "real_events": real_events,
-            "synthetic_and_interpreted_events": synthetic_and_interpreted_events,
-        })
-        .to_string()
-    );
-    println!();
-    println!(">>> Real events");
-    for summary in real_events {
-        println!(
-            "{}: {} ({})",
-            summary.name, summary.representative, summary.full
-        );
-    }
-    println!();
-    println!(">>> Synthetic and interpreted events");
-    for summary in synthetic_and_interpreted_events {
-        println!(
-            "{}: {} ({})",
-            summary.name, summary.representative, summary.full
-        );
-    }
-
-    Ok(())
+    Ok(JsonSummaries {
+        real_events,
+        synthetic_and_interpreted_events,
+    })
 }
 
-pub fn analyse_samples(args: &[String]) -> eyre::Result<Vec<SampleAnalysis>> {
+pub fn analyse_individuals(args: &[String]) -> eyre::Result<Vec<IndividualAnalysis>> {
     let url = args.iter().nth(0).unwrap().to_owned();
     let paths = args.into_iter().skip(1).collect::<Vec<_>>();
 
-    let mut samples = vec![];
+    let mut individuals = vec![];
     for (path, result) in paths
         .iter()
-        .map(|path| (path.to_owned(), analyse_sample(&url, path)))
+        .map(|path| (path.to_owned(), analyse_individual(&url, path)))
         .collect::<Vec<_>>()
     {
         let span = error_span!("analyse", path = path);
         let _enter = span.enter();
         match result {
-            Ok(result) => samples.push(result),
+            Ok(result) => individuals.push(result),
             Err(error) => warn!("Failed to analyse file: {error}"),
         }
     }
 
-    Ok(samples)
+    Ok(individuals)
 }
 
 #[tracing::instrument(level = "error", skip(url))]
-fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
-    info!("Analysing sample");
+fn analyse_individual(url: &str, path: &str) -> eyre::Result<IndividualAnalysis> {
+    info!("Analysing individual");
 
     #[derive(Deserialize)]
     struct Manifest {
@@ -190,7 +180,7 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
             .filter(|(name, _)| HTML_ONLY_NAMES.split(" ").find(|&n| n == name).is_some()),
     );
 
-    Ok(SampleAnalysis {
+    Ok(IndividualAnalysis {
         path: path.to_owned(),
         relevant_events: relevant_events,
         durations: durations,
@@ -198,7 +188,7 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
 }
 
 #[tracing::instrument(level = "error")]
-fn analyse_html_trace(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
+fn analyse_html_trace(url: &str, path: &str) -> eyre::Result<IndividualAnalysis> {
     let mut input = vec![];
     File::open(path)?.read_to_end(&mut input)?;
     let dom = parse(&input)?;
@@ -258,7 +248,7 @@ fn analyse_html_trace(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
         .find(|e| e.metadata.as_ref().is_some_and(|m| m.url == url))
         .is_none()
     {
-        bail!("No entry with matching .metadata.url! Skipping sample");
+        bail!("No entry with matching .metadata.url! Skipping individual");
     }
 
     // Now that we’ve filtered the events by URL, convert them to our internal format.
@@ -283,11 +273,11 @@ fn analyse_html_trace(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
     let mut durations = BTreeMap::default();
     let interesting_categories = format!("{RENDERER_NAMES}");
     for category in interesting_categories.split(" ") {
-        let duration = SampleAnalysis::sum_duration(&result, category);
+        let duration = IndividualAnalysis::sum_duration(&result, category);
         durations.insert(category.to_owned(), duration);
     }
 
-    Ok(SampleAnalysis {
+    Ok(IndividualAnalysis {
         path: path.to_owned(),
         relevant_events: result,
         durations,
@@ -295,7 +285,7 @@ fn analyse_html_trace(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
 }
 
 #[tracing::instrument(level = "error")]
-fn analyse_perfetto_trace(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
+fn analyse_perfetto_trace(url: &str, path: &str) -> eyre::Result<IndividualAnalysis> {
     // Tracks can have slices, instants, and counters. Slices must have stack-like behaviour within
     // a track, so we can use a stack to find pairs and merge them together.
     let mut tracks: HashMap<u64, Vec<PendingSlice>> = HashMap::default();
@@ -368,7 +358,7 @@ fn analyse_perfetto_trace(url: &str, path: &str) -> eyre::Result<SampleAnalysis>
         })
         .is_none()
     {
-        bail!("No entry with matching .metadata.url! Skipping sample");
+        bail!("No entry with matching .metadata.url! Skipping individual");
     }
 
     let mut result = vec![];
@@ -387,12 +377,12 @@ fn analyse_perfetto_trace(url: &str, path: &str) -> eyre::Result<SampleAnalysis>
     let mut durations = BTreeMap::default();
     let interesting_event_names = format!("{RENDERER_NAMES}");
     for name in interesting_event_names.split(" ") {
-        let duration = SampleAnalysis::sum_duration(&result, name);
+        let duration = IndividualAnalysis::sum_duration(&result, name);
         debug!("{name}: {:?}", duration);
         durations.insert(name.to_owned(), duration);
     }
 
-    let result = SampleAnalysis {
+    let result = IndividualAnalysis {
         path: path.to_owned(),
         relevant_events: result,
         durations,
@@ -447,13 +437,13 @@ impl TryFrom<HtmlTraceEvent> for Event {
 }
 
 #[derive(Debug)]
-pub struct SampleAnalysis {
+pub struct IndividualAnalysis {
     path: String,
     relevant_events: Vec<Event>,
     durations: BTreeMap<String, Duration>,
 }
 
-impl Sample for SampleAnalysis {
+impl Individual for IndividualAnalysis {
     fn path(&self) -> &str {
         &self.path
     }
@@ -534,11 +524,13 @@ impl Sample for SampleAnalysis {
         .flatten()
         .collect::<Vec<_>>();
         for (result_name, category) in METRICS {
-            if let Some(mut event) = SampleAnalysis::unique_instantaneous_event_from_first_parse(
-                &self.relevant_events,
-                result_name,
-                category,
-            )? {
+            if let Some(mut event) =
+                IndividualAnalysis::unique_instantaneous_event_from_first_parse(
+                    &self.relevant_events,
+                    result_name,
+                    category,
+                )?
+            {
                 event.start -= start;
                 result.push(event);
             }
@@ -548,7 +540,7 @@ impl Sample for SampleAnalysis {
     }
 }
 
-impl SampleAnalysis {
+impl IndividualAnalysis {
     fn sum_duration(relevant_events: &[Event], name: &str) -> Duration {
         Self::dur_by_name(relevant_events, name).iter().sum()
     }

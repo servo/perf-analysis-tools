@@ -12,6 +12,7 @@ if [ -e "$results/done" ]; then
     echo ">>> $results is done; skipping"
     exit
 fi
+rm -f "$results/*"
 
 export SERVO_TRACING='[ScriptParseHTML]=info,[ScriptEvaluate]=info,[LayoutPerform]=info,[Compositing]=info'
 for i in {01..$run_count}; do
@@ -31,8 +32,6 @@ for i in {01..$run_count}; do
         --ignore-certificate-errors \
         "$url" &
     pid=$!
-
-    "$script_dir/custom-servo-window-commands.sh" $pid
 
     sleep 10
     printf 'Closing window'

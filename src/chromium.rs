@@ -6,12 +6,11 @@ use std::{
 };
 
 use jane_eyre::eyre::{self, bail, OptionExt};
-use serde_json::json;
 use tracing::{debug, error_span, info, trace, warn};
 
 use crate::{
     json::{JsonTrace, TraceEvent},
-    summary::{Analysis, Event, Sample, SYNTHETIC_NAMES},
+    summary::{Analysis, Event, Individual, JsonSummaries, SYNTHETIC_NAMES},
 };
 
 static RENDERER_NAMES: &'static str = "ParseHTML EvaluateScript FunctionCall TimerFire UpdateLayoutTree Layout PrePaint Paint Layerize"; // TODO: does not include rasterisation and compositing
@@ -23,11 +22,23 @@ static METRICS: &'static [(&'static str, &'static str)] =
     &[("FP", "firstPaint"), ("FCP", "firstContentfulPaint")];
 
 pub fn main(args: Vec<String>) -> eyre::Result<()> {
-    let samples = analyse_samples(&args)?;
-    let analysis = Analysis { samples };
+    let summaries = compute_summaries(args)?;
+
+    println!("{}", summaries.json());
+    println!();
+    println!("{}", summaries.text()?);
+
+    Ok(())
+}
+
+#[tracing::instrument(level = "error")]
+pub fn compute_summaries(args: Vec<String>) -> Result<JsonSummaries, eyre::Error> {
+    info!("Computing summaries");
+    let individuals = analyse_individuals(&args)?;
+    let analysis = Analysis { individuals };
 
     let durations_keys = analysis
-        .samples
+        .individuals
         .iter()
         .flat_map(|s| s.durations.keys())
         .collect::<BTreeSet<_>>();
@@ -58,58 +69,36 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
         }
     }
 
-    println!(
-        "{}",
-        json! ({
-            "real_events": real_events,
-            "synthetic_and_interpreted_events": synthetic_and_interpreted_events,
-        })
-        .to_string()
-    );
-    println!();
-    println!(">>> Real events");
-    for summary in real_events {
-        println!(
-            "{}: {} ({})",
-            summary.name, summary.representative, summary.full
-        );
-    }
-    println!();
-    println!(">>> Synthetic and interpreted events");
-    for summary in synthetic_and_interpreted_events {
-        println!(
-            "{}: {} ({})",
-            summary.name, summary.representative, summary.full
-        );
-    }
-
-    Ok(())
+    Ok(JsonSummaries {
+        real_events,
+        synthetic_and_interpreted_events,
+    })
 }
 
-pub fn analyse_samples(args: &[String]) -> eyre::Result<Vec<SampleAnalysis>> {
+pub fn analyse_individuals(args: &[String]) -> eyre::Result<Vec<IndividualAnalysis>> {
     let url = args.iter().nth(0).unwrap().to_owned();
     let paths = args.into_iter().skip(1).collect::<Vec<_>>();
 
-    let mut samples = vec![];
+    let mut individuals = vec![];
     for (path, result) in paths
         .iter()
-        .map(|path| (path.to_owned(), analyse_sample(&url, path)))
+        .map(|path| (path.to_owned(), analyse_individual(&url, path)))
         .collect::<Vec<_>>()
     {
         let span = error_span!("analyse", path = path);
         let _enter = span.enter();
         match result {
-            Ok(result) => samples.push(result),
+            Ok(result) => individuals.push(result),
             Err(error) => warn!("Failed to analyse file: {error}"),
         }
     }
 
-    Ok(samples)
+    Ok(individuals)
 }
 
 #[tracing::instrument(level = "error", skip(url))]
-fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
-    info!("Analysing sample");
+fn analyse_individual(url: &str, path: &str) -> eyre::Result<IndividualAnalysis> {
+    info!("Analysing individual");
 
     let mut json = String::default();
     File::open(path)?.read_to_string(&mut json)?;
@@ -177,12 +166,12 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
     let mut durations = BTreeMap::default();
     let interesting_event_names = format!("{RENDERER_NAMES}");
     for name in interesting_event_names.split(" ") {
-        let duration = SampleAnalysis::sum_duration(&result, name)?;
+        let duration = IndividualAnalysis::sum_duration(&result, name)?;
         debug!("{name}: {:?}", duration);
         durations.insert(name.to_owned(), duration);
     }
 
-    let result = SampleAnalysis {
+    let result = IndividualAnalysis {
         path: path.to_owned(),
         relevant_events: result,
         durations,
@@ -191,13 +180,13 @@ fn analyse_sample(url: &str, path: &str) -> eyre::Result<SampleAnalysis> {
     Ok(result)
 }
 
-pub struct SampleAnalysis {
+pub struct IndividualAnalysis {
     path: String,
     relevant_events: Vec<TraceEvent>,
     durations: BTreeMap<String, Duration>,
 }
 
-impl Sample for SampleAnalysis {
+impl Individual for IndividualAnalysis {
     fn path(&self) -> &str {
         &self.path
     }
@@ -285,7 +274,7 @@ impl Sample for SampleAnalysis {
         // “loading” category events like `firstPaint` and `firstContentfulPaint` are timed from `markAsMainFrame`.
         // <https://codereview.chromium.org/2712773002>
         for (result_name, stop_name) in METRICS {
-            if let Ok(mut event) = SampleAnalysis::unique_instantaneous_event_from(
+            if let Ok(mut event) = IndividualAnalysis::unique_instantaneous_event_from(
                 &self.relevant_events,
                 result_name,
                 "markAsMainFrame",
@@ -300,7 +289,7 @@ impl Sample for SampleAnalysis {
     }
 }
 
-impl SampleAnalysis {
+impl IndividualAnalysis {
     fn sum_duration(relevant_events: &[TraceEvent], name: &str) -> eyre::Result<Duration> {
         let result = Self::dur_by_name(relevant_events, name)
             .iter()

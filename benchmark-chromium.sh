@@ -12,6 +12,7 @@ if [ -e "$results/done" ]; then
     echo ">>> $results is done; skipping"
     exit
 fi
+rm -f "$results/*"
 
 for i in {01..$run_count}; do
     echo ">>> $i"
@@ -37,7 +38,6 @@ for i in {01..$run_count}; do
         sleep 1
     done
     echo
-    "$script_dir/custom-chromium-window-commands.sh" $pid
 
     sleep 10
     # Close that window gracefully. Chromium does not write a trace file if sent a SIGTERM.

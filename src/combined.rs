@@ -5,7 +5,7 @@ use serde_json::json;
 
 use crate::{
     json::{JsonTrace, TraceEvent},
-    summary::{Analysis, Event, Sample},
+    summary::{Analysis, Event, Individual},
 };
 
 pub fn main(args: Vec<String>) -> eyre::Result<()> {
@@ -18,22 +18,22 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
         let args = &args[1..];
         names.push(format!("{mode} (command {})", analyses.len()));
 
-        let samples = match &**mode {
+        let individuals = match &**mode {
             // Usage: analyse servo <trace.html ...>
-            "servo" => crate::servo::analyse_samples(&args)?
+            "servo" => crate::servo::analyse_individuals(&args)?
                 .into_iter()
-                .map(|s| Box::new(s) as Box<dyn Sample>)
+                .map(|s| Box::new(s) as Box<dyn Individual>)
                 .collect::<Vec<_>>(),
             // Usage: analyse chromium <page url> <chrome.json ...>
-            "chromium" => crate::chromium::analyse_samples(&args)?
+            "chromium" => crate::chromium::analyse_individuals(&args)?
                 .into_iter()
-                .map(|s| Box::new(s) as Box<dyn Sample>)
+                .map(|s| Box::new(s) as Box<dyn Individual>)
                 .collect::<Vec<_>>(),
             other => bail!("Unknown command: {other}"),
         };
 
-        for sample in samples.iter() {
-            let path = Path::new(sample.path()).canonicalize()?;
+        for individual in individuals.iter() {
+            let path = Path::new(individual.path()).canonicalize()?;
             let path = path
                 .to_str()
                 .ok_or_eyre("Failed to convert PathBuf to str")?;
@@ -52,7 +52,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
             };
         }
 
-        let analysis = Analysis { samples };
+        let analysis = Analysis { individuals };
         analyses.push(analysis);
     }
 
@@ -68,10 +68,10 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
             args: [("name".to_owned(), json!(name))].into_iter().collect(),
             ..Default::default()
         });
-        // For each of its samples, create two “threads”, one for synthetic events and one for real events.
-        for (j, sample) in analysis.samples.into_iter().enumerate() {
-            // Strip the longest path prefix across all samples and all commands, for brevity in Perfetto UI.
-            let path = Path::new(sample.path()).canonicalize()?;
+        // For each of its individuals, create two “threads”, one for synthetic events and one for real events.
+        for (j, individual) in analysis.individuals.into_iter().enumerate() {
+            // Strip the longest path prefix across all individuals and all commands, for brevity in Perfetto UI.
+            let path = Path::new(individual.path()).canonicalize()?;
             let path = path
                 .to_str()
                 .ok_or_eyre("Failed to convert PathBuf to str")?;
@@ -88,12 +88,12 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
                 TraceRow {
                     id: j * 2 + 0,
                     name: format!("{path} (real)"),
-                    events: sample.real_events()?,
+                    events: individual.real_events()?,
                 },
                 TraceRow {
                     id: j * 2 + 1,
                     name: format!("{path} (synthetic)"),
-                    events: sample.synthetic_events()?,
+                    events: individual.synthetic_events()?,
                 },
             ] {
                 events.push(TraceEvent {
