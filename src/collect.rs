@@ -61,19 +61,18 @@ fn create_sample(
     }
 
     let sample_dir = sample_dir.to_str().ok_or_eyre("Bad sample path")?;
-    info!("Creating sample; benchmark runner args: ");
+    info!("Creating sample");
+    let mut args = vec![
+        engine.browser_path().to_owned(),
+        site.url.to_owned(),
+        study.sample_size.to_string(),
+        sample_dir.to_owned(),
+    ];
+    args.extend(site.extra_engine_arguments(engine.key).to_owned());
     let exit_status = SHELL
         .lock()
         .map_err(|e| eyre!("Mutex poisoned: {e:?}"))?
-        .run(
-            engine.benchmark_runner_code(),
-            [
-                engine.browser_path().to_owned(),
-                site.url.to_owned(),
-                study.sample_size.to_string(),
-                sample_dir.to_owned(),
-            ],
-        )?
+        .run(engine.benchmark_runner_code(), args)?
         .spawn()?
         .wait()?;
     if !exit_status.success() {

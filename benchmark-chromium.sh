@@ -1,12 +1,15 @@
 #!/usr/bin/env zsh
-# Usage: benchmark-chromium.sh <path/to/chrome> <url> <run count> [path/to/results]
+# Usage: benchmark-chromium.sh <path/to/chrome> <url> <run count> [path/to/results] [extra chrome arguments ...]
 set -euo pipefail
+script_dir=${0:a:h}
 chromium=$1; shift
 url=$1; shift
 run_count=$1; shift
-script_dir=${0:a:h}
-
 results=${1-$(mktemp -d)}
+if [ $# -gt 0 ]; then
+    shift
+fi
+
 mkdir -p "$results"
 if [ -e "$results/done" ]; then
     echo ">>> $results is done; skipping"
@@ -27,6 +30,7 @@ for i in {01..$run_count}; do
         --user-data-dir="$profile" --no-first-run \
         --trace-startup --trace-startup-file="$results/chrome$i.pftrace" \
         --ignore-certificate-errors \
+        "$@" \
         "$url" &
     pid=$!
 

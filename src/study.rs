@@ -23,11 +23,19 @@ pub struct KeyedCpuConfig<'study> {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Site(String);
+#[serde(untagged)]
+pub enum Site {
+    UrlOnly(String),
+    Full {
+        url: String,
+        extra_engine_arguments: BTreeMap<String, Vec<String>>,
+    },
+}
 #[derive(Clone, Copy, Debug)]
 pub struct KeyedSite<'study> {
     pub key: &'study str,
     pub url: &'study str,
+    extra_engine_arguments: Option<&'study BTreeMap<String, Vec<String>>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,15 +69,41 @@ impl Study {
     }
 
     pub fn sites(&self) -> impl Iterator<Item = KeyedSite> {
-        self.sites
-            .iter()
-            .map(|(key, site)| KeyedSite { key, url: &site.0 })
+        self.sites.iter().map(|(key, site)| (&**key, site).into())
     }
 
     pub fn engines(&self) -> impl Iterator<Item = KeyedEngine> {
         self.engines
             .iter()
             .map(|(key, engine)| KeyedEngine { key, engine })
+    }
+}
+
+impl<'study> From<(&'study str, &'study Site)> for KeyedSite<'study> {
+    fn from((key, site): (&'study str, &'study Site)) -> Self {
+        match site {
+            Site::UrlOnly(url) => Self {
+                key,
+                url,
+                extra_engine_arguments: None,
+            },
+            Site::Full {
+                url,
+                extra_engine_arguments,
+            } => Self {
+                key,
+                url,
+                extra_engine_arguments: Some(&extra_engine_arguments),
+            },
+        }
+    }
+}
+
+impl KeyedSite<'_> {
+    pub fn extra_engine_arguments(&self, engine_key: &str) -> &[String] {
+        self.extra_engine_arguments
+            .and_then(|map| map.get(engine_key))
+            .map_or(&[], |result| &result)
     }
 }
 

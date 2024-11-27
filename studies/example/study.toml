@@ -18,11 +18,19 @@ isolate_cpu_command = ["sudo", "../../isolate-cpu-for-shell.sh"]  # on Linux
 8cpu = [8, 9, 10, 11, 12, 13, 14, 15]
 
 # Define your sites here.
-# - Syntax is `key = "url"`
+# - Syntax is `key = "url"` or a `[sites.key]` table (see below)
 # - Dots in the key must be quoted
 # - If `url` has the root path (`/`), the trailing slash must be included
 [sites]
 "servo.org" = "https://servo.org/"
+
+# Sites can also have other settings, in the full table format.
+# - `url` has the same meaning as the string value above
+# - `extra_engine_arguments` is keyed on the engine key
+# [sites."example.com"]
+# url = "http://example.com/"
+# extra_engine_arguments.servo1 = ["--pref", "dom.svg.enabled"]
+# extra_engine_arguments.servo2 = ["--pref", "dom.svg.enabled"]
 
 # Define your engines here.
 # - Syntax is `key = { type = "Servo|Chromium", path = "/path/to/browser" }`

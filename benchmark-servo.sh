@@ -1,12 +1,15 @@
 #!/usr/bin/env zsh
-# Usage: benchmark-servo.sh <path/to/servo> <url> <run count> [path/to/results]
+# Usage: benchmark-servo.sh <path/to/servo> <url> <run count> [path/to/results] [extra servo arguments ...]
 set -euo pipefail
+script_dir=${0:a:h}
 servo=$1; shift
 url=$1; shift
 run_count=$1; shift
-script_dir=${0:a:h}
-
 results=${1-$(mktemp -d)}
+if [ $# -gt 0 ]; then
+    shift
+fi
+
 mkdir -p "$results"
 if [ -e "$results/done" ]; then
     echo ">>> $results is done; skipping"
@@ -30,6 +33,7 @@ for i in {01..$run_count}; do
     "$servo" \
         --profiler-trace-path="$results/$html_trace" --print-pwm \
         --ignore-certificate-errors \
+        "$@" \
         "$url" &
     pid=$!
 
