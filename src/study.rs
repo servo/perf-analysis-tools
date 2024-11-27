@@ -28,7 +28,7 @@ pub enum Site {
     UrlOnly(String),
     Full {
         url: String,
-        extra_engine_arguments: BTreeMap<String, Vec<String>>,
+        extra_engine_arguments: Option<BTreeMap<String, Vec<String>>>,
     },
 }
 #[derive(Clone, Copy, Debug)]
@@ -93,7 +93,7 @@ impl<'study> From<(&'study str, &'study Site)> for KeyedSite<'study> {
             } => Self {
                 key,
                 url,
-                extra_engine_arguments: Some(&extra_engine_arguments),
+                extra_engine_arguments: extra_engine_arguments.as_ref(),
             },
         }
     }

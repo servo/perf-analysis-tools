@@ -26,7 +26,7 @@ isolate_cpu_command = ["sudo", "../../isolate-cpu-for-shell.sh"]  # on Linux
 
 # Sites can also have other settings, in the full table format.
 # - `url` has the same meaning as the string value above
-# - `extra_engine_arguments` is keyed on the engine key
+# - `extra_engine_arguments` (optional) is keyed on the engine key
 # [sites."example.com"]
 # url = "http://example.com/"
 # extra_engine_arguments.servo1 = ["--pref", "dom.svg.enabled"]
