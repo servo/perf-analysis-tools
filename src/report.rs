@@ -144,8 +144,8 @@ fn print_section(
                 }
             }
         }
+        println!("</table>\n");
     }
-    println!("</table>\n");
 
     Ok(())
 }
