@@ -54,9 +54,12 @@ pub fn compute_summaries(args: Vec<String>) -> Result<JsonSummaries, eyre::Error
 
     for synthetic_name in SYNTHETIC_NAMES.split(" ") {
         if let Ok(summary) = analysis.summary(|s| {
-            let Ok(events) = s.synthetic_events() else {
-                warn!("Failed to get synthetic events");
-                return None;
+            let events = match s.synthetic_events() {
+                Ok(events) => events,
+                Err(error) => {
+                    warn!(?error, "Failed to get synthetic events");
+                    return None;
+                }
             };
             let result = events
                 .iter()
@@ -274,15 +277,14 @@ impl Individual for IndividualAnalysis {
         // “loading” category events like `firstPaint` and `firstContentfulPaint` are timed from `markAsMainFrame`.
         // <https://codereview.chromium.org/2712773002>
         for (result_name, stop_name) in METRICS {
-            if let Ok(mut event) = IndividualAnalysis::unique_instantaneous_event_from(
+            let mut event = IndividualAnalysis::unique_instantaneous_event_from(
                 &self.relevant_events,
                 result_name,
                 "markAsMainFrame",
                 stop_name,
-            ) {
-                event.start -= start;
-                result.push(event);
-            }
+            )?;
+            event.start -= start;
+            result.push(event);
         }
 
         Ok(result)
