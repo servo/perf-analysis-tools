@@ -18,6 +18,7 @@ serde_with = "3.9.0"
 toml = "0.8.19"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+webdriver_client = { version = "0.2.5", git = "https://github.com/delan/webdriver_client_rust.git", branch = "bump-log-to-0.4" }
 
 [profile.release]
 debug = true

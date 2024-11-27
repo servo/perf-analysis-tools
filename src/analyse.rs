@@ -54,7 +54,7 @@ fn analyse_sample(
                 }
             }
         }
-        Engine::Chromium { .. } => {
+        Engine::Chromium { .. } | Engine::ChromeDriver { .. } => {
             let mut json_paths = vec![];
             let mut convert_jobs = vec![];
             for entry in std::fs::read_dir(&sample_dir)? {
@@ -99,7 +99,9 @@ fn analyse_sample(
 
     let summaries = match engine.engine {
         Engine::Servo { .. } => crate::servo::compute_summaries(args)?,
-        Engine::Chromium { .. } => crate::chromium::compute_summaries(args)?,
+        Engine::Chromium { .. } | Engine::ChromeDriver { .. } => {
+            crate::chromium::compute_summaries(args)?
+        }
     };
 
     File::create(sample_dir.join("summaries.json"))?.write_all(summaries.json().as_bytes())?;

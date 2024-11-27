@@ -65,7 +65,12 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
     // If there were any Chromium results, print sections for real Chromium events.
     if study
         .engines()
-        .find(|engine| matches!(engine.engine, Engine::Chromium { .. }))
+        .find(|engine| {
+            matches!(
+                engine.engine,
+                Engine::Chromium { .. } | Engine::ChromeDriver { .. },
+            )
+        })
         .is_some()
     {
         for summary_key in REAL_CHROMIUM_EVENTS.split(" ") {

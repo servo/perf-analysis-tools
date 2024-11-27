@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fs::File, io::Read, path::Path, time::Duration};
 
-use jane_eyre::eyre;
+use jane_eyre::eyre::{self, bail};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -29,6 +29,9 @@ enum Site {
     Full {
         url: String,
         browser_open_time: Option<u64>,
+        user_agent: Option<String>,
+        screen_size: Option<Vec<usize>>,
+        wait_for_selectors: Option<BTreeMap<String, usize>>,
         extra_engine_arguments: Option<BTreeMap<String, Vec<String>>>,
     },
 }
@@ -37,6 +40,9 @@ pub struct KeyedSite<'study> {
     pub key: &'study str,
     pub url: &'study str,
     pub browser_open_time: Duration,
+    pub user_agent: Option<&'study str>,
+    screen_size: Option<&'study [usize]>,
+    wait_for_selectors: Option<&'study BTreeMap<String, usize>>,
     extra_engine_arguments: Option<&'study BTreeMap<String, Vec<String>>>,
 }
 
@@ -45,6 +51,7 @@ pub struct KeyedSite<'study> {
 pub enum Engine {
     Servo { path: String },
     Chromium { path: String },
+    ChromeDriver { path: String },
 }
 #[derive(Clone, Copy, Debug)]
 pub struct KeyedEngine<'study> {
@@ -90,17 +97,26 @@ impl<'study> From<(&'study str, &'study Site)> for KeyedSite<'study> {
                 key,
                 url,
                 browser_open_time: default_browser_open_time,
+                user_agent: None,
+                screen_size: None,
+                wait_for_selectors: None,
                 extra_engine_arguments: None,
             },
             Site::Full {
                 url,
-                extra_engine_arguments,
                 browser_open_time,
+                user_agent,
+                screen_size,
+                wait_for_selectors,
+                extra_engine_arguments,
             } => Self {
                 key,
                 url,
                 browser_open_time: browser_open_time
                     .map_or(default_browser_open_time, Duration::from_secs),
+                user_agent: user_agent.as_deref(),
+                screen_size: screen_size.as_deref(),
+                wait_for_selectors: wait_for_selectors.as_ref(),
                 extra_engine_arguments: extra_engine_arguments.as_ref(),
             },
         }
@@ -108,6 +124,25 @@ impl<'study> From<(&'study str, &'study Site)> for KeyedSite<'study> {
 }
 
 impl KeyedSite<'_> {
+    pub fn screen_size(&self) -> eyre::Result<Option<(usize, usize)>> {
+        self.screen_size
+            .map(|size| {
+                Ok(match size {
+                    [width, height] => (*width, *height),
+                    other => bail!("Bad screen_size: {other:?}"),
+                })
+            })
+            .transpose()
+    }
+
+    pub fn wait_for_selectors(&self) -> Box<dyn Iterator<Item = (&String, &usize)> + '_> {
+        if let Some(wait_for_selectors) = self.wait_for_selectors {
+            Box::new(wait_for_selectors.iter())
+        } else {
+            Box::new([].into_iter())
+        }
+    }
+
     pub fn extra_engine_arguments(&self, engine_key: &str) -> &[String] {
         self.extra_engine_arguments
             .and_then(|map| map.get(engine_key))
@@ -120,6 +155,9 @@ impl KeyedEngine<'_> {
         match self.engine {
             Engine::Servo { .. } => include_str!("../benchmark-servo.sh"),
             Engine::Chromium { .. } => include_str!("../benchmark-chromium.sh"),
+            Engine::ChromeDriver { .. } => {
+                panic!("BUG: Engine::ChromeDriver has no benchmark runner script")
+            }
         }
     }
 
@@ -127,6 +165,7 @@ impl KeyedEngine<'_> {
         match self.engine {
             Engine::Servo { path } => path,
             Engine::Chromium { path } => path,
+            Engine::ChromeDriver { path } => path,
         }
     }
 }
