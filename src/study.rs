@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fs::File, io::Read, path::Path};
+use std::{collections::BTreeMap, fs::File, io::Read, path::Path, time::Duration};
 
 use jane_eyre::eyre;
 use serde::Deserialize;
@@ -15,7 +15,7 @@ pub struct Study {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CpuConfig(Vec<usize>);
+struct CpuConfig(Vec<usize>);
 #[derive(Clone, Copy, Debug)]
 pub struct KeyedCpuConfig<'study> {
     pub key: &'study str,
@@ -24,10 +24,11 @@ pub struct KeyedCpuConfig<'study> {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-pub enum Site {
+enum Site {
     UrlOnly(String),
     Full {
         url: String,
+        browser_open_time: Option<u64>,
         extra_engine_arguments: Option<BTreeMap<String, Vec<String>>>,
     },
 }
@@ -35,6 +36,7 @@ pub enum Site {
 pub struct KeyedSite<'study> {
     pub key: &'study str,
     pub url: &'study str,
+    pub browser_open_time: Duration,
     extra_engine_arguments: Option<&'study BTreeMap<String, Vec<String>>>,
 }
 
@@ -81,18 +83,24 @@ impl Study {
 
 impl<'study> From<(&'study str, &'study Site)> for KeyedSite<'study> {
     fn from((key, site): (&'study str, &'study Site)) -> Self {
+        let default_browser_open_time = Duration::from_secs(10);
+
         match site {
             Site::UrlOnly(url) => Self {
                 key,
                 url,
+                browser_open_time: default_browser_open_time,
                 extra_engine_arguments: None,
             },
             Site::Full {
                 url,
                 extra_engine_arguments,
+                browser_open_time,
             } => Self {
                 key,
                 url,
+                browser_open_time: browser_open_time
+                    .map_or(default_browser_open_time, Duration::from_secs),
                 extra_engine_arguments: extra_engine_arguments.as_ref(),
             },
         }

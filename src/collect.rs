@@ -73,6 +73,10 @@ fn create_sample(
         .lock()
         .map_err(|e| eyre!("Mutex poisoned: {e:?}"))?
         .run(engine.benchmark_runner_code(), args)?
+        .env(
+            "SERVO_PERF_BROWSER_OPEN_TIME",
+            site.browser_open_time.as_secs().to_string(),
+        )
         .spawn()?
         .wait()?;
     if !exit_status.success() {

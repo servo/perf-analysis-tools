@@ -26,9 +26,11 @@ isolate_cpu_command = ["sudo", "../../isolate-cpu-for-shell.sh"]  # on Linux
 
 # Sites can also have other settings, in the full table format.
 # - `url` has the same meaning as the string value above
+# - `browser_open_time` (optional) is in seconds
 # - `extra_engine_arguments` (optional) is keyed on the engine key
 # [sites."example.com"]
 # url = "http://example.com/"
+# browser_open_time = 20
 # extra_engine_arguments.servo1 = ["--pref", "dom.svg.enabled"]
 # extra_engine_arguments.servo2 = ["--pref", "dom.svg.enabled"]
 

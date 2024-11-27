@@ -9,6 +9,7 @@ results=${1-$(mktemp -d)}
 if [ $# -gt 0 ]; then
     shift
 fi
+browser_open_time=${SERVO_PERF_BROWSER_OPEN_TIME-10}
 
 mkdir -p "$results"
 if [ -e "$results/done" ]; then
@@ -43,7 +44,7 @@ for i in {01..$run_count}; do
     done
     echo
 
-    sleep 10
+    sleep "$browser_open_time"
     # Close that window gracefully. Chromium does not write a trace file if sent a SIGTERM.
     printf 'Closing window'
     while kill -0 $pid 2> /dev/null; do
