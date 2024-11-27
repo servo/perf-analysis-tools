@@ -5,7 +5,7 @@ sample_size = 30
 traceconv_command = ["steam-run", "../../traceconv"]
 
 # Command for setting up CPU isolation. Must accept the same arguments as isolate-cpu-for-shell.sh.
-# isolate_cpu_command = [":"]  # on platforms without CPU isolation support
+# isolate_cpu_command = ["true"]  # on platforms without CPU isolation support
 isolate_cpu_command = ["sudo", "../../isolate-cpu-for-shell.sh"]  # on Linux
 
 # Define your CPU configs here.
