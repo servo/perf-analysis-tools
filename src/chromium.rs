@@ -277,7 +277,7 @@ impl Individual for IndividualAnalysis {
         // “loading” category events like `firstPaint` and `firstContentfulPaint` are timed from `markAsMainFrame`.
         // <https://codereview.chromium.org/2712773002>
         for (result_name, stop_name) in METRICS {
-            let mut event = IndividualAnalysis::unique_instantaneous_event_from(
+            let mut event = IndividualAnalysis::unique_instantaneous_event_from_first(
                 &self.relevant_events,
                 result_name,
                 "markAsMainFrame",
@@ -300,14 +300,14 @@ impl IndividualAnalysis {
         Ok(Duration::from_micros(result.try_into()?))
     }
 
-    fn unique_instantaneous_event_from(
+    fn unique_instantaneous_event_from_first(
         relevant_events: &[TraceEvent],
         result_name: &str,
         start_name: &str,
         stop_name: &str,
     ) -> eyre::Result<Event> {
-        let [start_ts] = Self::ts_by_name(relevant_events, start_name)[..] else {
-            bail!("Expected exactly one event with name {start_name}");
+        let [start_ts, ..] = Self::ts_by_name(relevant_events, start_name)[..] else {
+            bail!("Expected at least one event with name {start_name}");
         };
         let [stop_ts] = Self::ts_by_name(relevant_events, stop_name)[..] else {
             bail!("Expected exactly one event with name {stop_name}");
