@@ -17,7 +17,7 @@ if [ -e "$results/done" ]; then
 fi
 rm -f "$results/*"
 
-export SERVO_TRACING='[ScriptParseHTML]=info,[ScriptEvaluate]=info,[LayoutPerform]=info,[Compositing]=info'
+export SERVO_TRACING='info'
 for i in {01..$run_count}; do
     echo ">>> $i"
 
