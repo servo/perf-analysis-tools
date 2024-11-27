@@ -44,6 +44,10 @@ fn analyse_sample(
         Engine::Servo { .. } => {
             for entry in std::fs::read_dir(&sample_dir)? {
                 let path = entry?.path();
+                // Skip our own output files `summaries.*`.
+                if path.file_stem() == Some(OsStr::new("summaries")) {
+                    continue;
+                }
                 // Filter to `manifest*.json`.
                 if path.extension() == Some(OsStr::new("json")) {
                     args.push(path.to_str().ok_or_eyre("Unsupported path")?.to_owned());
@@ -79,13 +83,12 @@ fn analyse_sample(
             for result in traceconv_results {
                 result?;
             }
-        }
-    }
-    for entry in std::fs::read_dir(&sample_dir)? {
-        let path = entry?.path();
-        match engine.engine {
-            Engine::Servo { .. } => {}
-            Engine::Chromium { .. } => {
+            for entry in std::fs::read_dir(&sample_dir)? {
+                let path = entry?.path();
+                // Skip our own output files `summaries.*`.
+                if path.file_stem() == Some(OsStr::new("summaries")) {
+                    continue;
+                }
                 // Filter to `chrome*.json`.
                 if path.extension() == Some(OsStr::new("json")) {
                     args.push(path.to_str().ok_or_eyre("Unsupported path")?.to_owned());
