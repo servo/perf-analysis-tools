@@ -254,7 +254,7 @@ fn print_section(
         plot_data_url.set_data(plot_svg.as_bytes());
         println!("<img src='{}'>\n", plot_data_url.to_string());
 
-        println!("<table>");
+        println!("<table border=1 cellpadding=3>");
         println!("<tr>");
         println!("<th colspan=2>");
         for cpu_config in study.cpu_configs() {
