@@ -5,7 +5,7 @@ use tracing::info;
 
 use crate::{
     study::{Engine, KeyedCpuConfig, KeyedEngine, KeyedSite, Study},
-    summary::{JsonSummaries, JsonSummary},
+    summary::{JsonSummaries, JsonSummary, Summary},
 };
 
 static USER_FACING_PAINT_METRICS: &str = "FP FCP";
@@ -118,45 +118,69 @@ fn print_section(
         println!("#### {}\n", site.key);
         println!("<table>");
         println!("<tr>");
-        println!("<th>");
+        println!("<th colspan=2>");
         for cpu_config in study.cpu_configs() {
-            println!("<th colspan=4>{}", cpu_config.key);
+            println!("<th>{}", cpu_config.key);
         }
-        println!("<tr>");
-        println!("<th>");
-        for _ in study.cpu_configs() {
-            println!("<th>min");
-            println!("<th>µ");
-            println!("<th>s");
-            println!("<th>n");
-        }
-        for engine in study.engines() {
-            // Loop and break to print a `<tr>` and `<th>` only when `summary_key` is applicable to `engine`.
-            for cpu_config in study.cpu_configs() {
-                let summaries = summaries_map
-                    .get(&(cpu_config.key, site.key, engine.key))
-                    .ok_or_eyre("Vec<JsonSummary> not found")?;
-                if summaries
-                    .iter()
-                    .find(|summary| summary.name == summary_key)
-                    .is_some()
-                {
-                    println!("<tr>");
-                    println!("<th>{}", engine.key);
-                    break;
+        let list: &[(&str, Box<dyn Fn(&Summary<_>) -> String>)] = &[
+            ("n", Box::new(|s| s.fmt_n())),
+            ("μ", Box::new(|s| s.fmt_mean())),
+            ("s", Box::new(|s| s.fmt_stdev())),
+            ("min", Box::new(|s| s.fmt_min())),
+            ("max", Box::new(|s| s.fmt_max())),
+        ];
+        for (statistic_label, statistic_getter) in list {
+            // Count the actual number of rows we will need, for rowspan.
+            let mut rowspan = 0;
+            for engine in study.engines() {
+                for cpu_config in study.cpu_configs() {
+                    let summaries = summaries_map
+                        .get(&(cpu_config.key, site.key, engine.key))
+                        .ok_or_eyre("Vec<JsonSummary> not found")?;
+                    if summaries
+                        .iter()
+                        .find(|summary| summary.name == summary_key)
+                        .is_some()
+                    {
+                        rowspan += 1;
+                    }
                 }
             }
-            // Now print the data for that row.
-            for cpu_config in study.cpu_configs() {
-                let summaries = summaries_map
-                    .get(&(cpu_config.key, site.key, engine.key))
-                    .ok_or_eyre("Vec<JsonSummary> not found")?;
-                if let Some(summary) = summaries.iter().find(|summary| summary.name == summary_key)
-                {
-                    println!("<td title='{}'>{}", summary.full, summary.representative);
-                    println!("<td title='{}'>{}", summary.full, summary.raw.fmt_mean());
-                    println!("<td title='{}'>{}", summary.full, summary.raw.fmt_stdev());
-                    println!("<td title='{}'>{}", summary.full, summary.raw.fmt_n());
+            let mut need_statistic_label = true;
+            for engine in study.engines() {
+                // Loop and break to print a `<tr>` and `<th>` only when `summary_key` is applicable to `engine`.
+                for cpu_config in study.cpu_configs() {
+                    let summaries = summaries_map
+                        .get(&(cpu_config.key, site.key, engine.key))
+                        .ok_or_eyre("Vec<JsonSummary> not found")?;
+                    if summaries
+                        .iter()
+                        .find(|summary| summary.name == summary_key)
+                        .is_some()
+                    {
+                        println!("<tr>");
+                        if need_statistic_label {
+                            println!("<th rowspan={rowspan}>{statistic_label}");
+                        }
+                        println!("<th>{}", engine.key);
+                        need_statistic_label = false;
+                        break;
+                    }
+                }
+                // Now print the data for that row.
+                for cpu_config in study.cpu_configs() {
+                    let summaries = summaries_map
+                        .get(&(cpu_config.key, site.key, engine.key))
+                        .ok_or_eyre("Vec<JsonSummary> not found")?;
+                    if let Some(summary) =
+                        summaries.iter().find(|summary| summary.name == summary_key)
+                    {
+                        println!(
+                            "<td title='{}'>{}",
+                            summary.full,
+                            statistic_getter(&summary.raw)
+                        );
+                    }
                 }
             }
         }
