@@ -10,7 +10,9 @@ use tracing::{debug, error_span, info, trace, warn};
 
 use crate::{
     json::{JsonTrace, TraceEvent},
-    summary::{Analysis, Event, Individual, JsonSummaries, SYNTHETIC_NAMES},
+    summary::{
+        Analysis, Event, EventKind, Individual, JsonRawSeries, JsonSummaries, SYNTHETIC_NAMES,
+    },
 };
 
 static RENDERER_NAMES: &'static str = "ParseHTML EvaluateScript FunctionCall TimerFire UpdateLayoutTree Layout PrePaint Paint Layerize"; // TODO: does not include rasterisation and compositing
@@ -35,24 +37,41 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
 pub fn compute_summaries(args: Vec<String>) -> Result<JsonSummaries, eyre::Error> {
     info!("Computing summaries");
     let individuals = analyse_individuals(&args)?;
-    let analysis = Analysis { individuals };
-
-    let durations_keys = analysis
-        .individuals
+    let durations_keys = individuals
         .iter()
         .flat_map(|s| s.durations.keys())
+        .map(|name| name.to_owned())
         .collect::<BTreeSet<_>>();
+    let mut raw_series = durations_keys
+        .iter()
+        .map(|name| JsonRawSeries {
+            name: name.to_owned(),
+            kind: EventKind::Chromium,
+            xs: individuals
+                .iter()
+                .flat_map(|i| i.durations.get(name))
+                .map(|x| x.as_secs_f64())
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+
+    let analysis = Analysis { individuals };
 
     let mut real_events = vec![];
     let mut synthetic_and_interpreted_events = vec![];
 
     for name in durations_keys {
-        if let Ok(summary) = analysis.summary(|s| s.durations.get(name).map(|d| d.as_secs_f64())) {
-            real_events.push(summary.to_json(name));
+        if let Ok(summary) = analysis.summary(|s| s.durations.get(&name).map(|d| d.as_secs_f64())) {
+            real_events.push(summary.to_json(&name));
         };
     }
 
     for synthetic_name in SYNTHETIC_NAMES.split(" ") {
+        let mut series = JsonRawSeries {
+            name: synthetic_name.to_owned(),
+            kind: EventKind::SyntheticOrInterpreted,
+            xs: vec![],
+        };
         if let Ok(summary) = analysis.summary(|s| {
             let events = match s.synthetic_events() {
                 Ok(events) => events,
@@ -66,15 +85,18 @@ pub fn compute_summaries(args: Vec<String>) -> Result<JsonSummaries, eyre::Error
                 .filter(|e| e.name == synthetic_name)
                 .flat_map(|e| e.duration.map(|d| d.as_secs_f64()))
                 .sum::<f64>();
+            series.xs.push(result);
             Some(result)
         }) {
             synthetic_and_interpreted_events.push(summary.to_json(synthetic_name));
         }
+        raw_series.push(series);
     }
 
     Ok(JsonSummaries {
         real_events,
         synthetic_and_interpreted_events,
+        raw_series,
     })
 }
 

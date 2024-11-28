@@ -43,6 +43,7 @@ pub struct Summary<T> {
 pub struct JsonSummaries {
     pub real_events: Vec<JsonSummary>,
     pub synthetic_and_interpreted_events: Vec<JsonSummary>,
+    pub raw_series: Vec<JsonRawSeries>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -51,6 +52,26 @@ pub struct JsonSummary {
     pub raw: Summary<f64>,
     pub full: String,
     pub representative: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct JsonRawSeries {
+    pub name: String,
+    pub kind: EventKind,
+    pub xs: Vec<f64>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub enum EventKind {
+    SyntheticOrInterpreted,
+    Servo,
+    Chromium,
+}
+
+impl Display for EventKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl Event {
