@@ -53,7 +53,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
 
     // Print sections for user-facing paint metrics.
     for summary_key in USER_FACING_PAINT_METRICS.split(" ") {
-        println!("### {summary_key} (synthetic)\n");
+        println!("<h3>{summary_key} (synthetic)</h3>\n");
         print_section(
             &study,
             &raw_series_map,
@@ -70,7 +70,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
         .is_some()
     {
         for summary_key in REAL_SERVO_EVENTS.split(" ") {
-            println!("### {summary_key} (real)\n");
+            println!("<h3>{summary_key} (real)</h3>\n");
             print_section(
                 &study,
                 &raw_series_map,
@@ -93,7 +93,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
         .is_some()
     {
         for summary_key in REAL_CHROMIUM_EVENTS.split(" ") {
-            println!("### {summary_key} (real)\n");
+            println!("<h3>{summary_key} (real)</h3>\n");
             print_section(
                 &study,
                 &raw_series_map,
@@ -106,7 +106,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
 
     // Print sections for rendering phases model.
     for summary_key in RENDERING_PHASES_MODEL_EVENTS.split(" ") {
-        println!("### {summary_key} (synthetic)\n");
+        println!("<h3>{summary_key} (synthetic)</h3>\n");
         print_section(
             &study,
             &raw_series_map,
@@ -118,7 +118,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
 
     // Print sections for overall rendering time model.
     for summary_key in OVERALL_RENDERING_TIME_MODEL_EVENTS.split(" ") {
-        println!("### {summary_key} (synthetic)\n");
+        println!("<h3>{summary_key} (synthetic)</h3>\n");
         print_section(
             &study,
             &raw_series_map,
@@ -154,7 +154,7 @@ fn print_section(
     summary_key: &str,
 ) -> eyre::Result<()> {
     for site in study.sites() {
-        println!("#### {}\n", site.key);
+        println!("<h4>{}</h4>\n", site.key);
 
         // Plot all of the data for this metric and site, organised by CPU config and engine.
         // First we define a tick distribution factory for the x axis, based on the default for f64
