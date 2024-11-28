@@ -225,32 +225,37 @@ impl<IndividualType> Analysis<IndividualType> {
     }
 }
 
+fn value_unit(x: f64) -> (f64, &'static str) {
+    if x >= 1.0 {
+        (x, "s")
+    } else if x * 1000.0 >= 1.0 {
+        (x * 1000.0, "ms")
+    } else if x * 1000000.0 >= 1.0 {
+        (x * 1000000.0, "μs")
+    } else {
+        (x * 1000000000.0, "ns")
+    }
+}
+
+fn dp(x: f64) -> usize {
+    let (value, _) = value_unit(x);
+    if value >= 1000.0 {
+        0
+    } else if value >= 100.0 {
+        1
+    } else if value >= 10.0 {
+        2
+    } else {
+        3
+    }
+}
+
+pub fn fmt_seconds_short(x: f64) -> String {
+    let (value, unit) = value_unit(x);
+    format!("{:.*?}{}", 0, value, unit)
+}
+
 impl Summary<f64> {
-    fn value(x: f64) -> (f64, &'static str) {
-        if x >= 1.0 {
-            (x, "s")
-        } else if x * 1000.0 >= 1.0 {
-            (x * 1000.0, "ms")
-        } else if x * 1000000.0 >= 1.0 {
-            (x * 1000000.0, "μs")
-        } else {
-            (x * 1000000000.0, "ns")
-        }
-    }
-
-    fn dp(x: f64) -> usize {
-        let (value, _) = Self::value(x);
-        if value >= 1000.0 {
-            0
-        } else if value >= 100.0 {
-            1
-        } else if value >= 10.0 {
-            2
-        } else {
-            3
-        }
-    }
-
     pub fn fmt_representative(&self) -> String {
         self.fmt_min()
     }
@@ -271,23 +276,23 @@ impl Summary<f64> {
     }
 
     pub fn fmt_mean(&self) -> String {
-        let (mean, mean_unit) = Self::value(self.mean);
-        format!("{:.*?}{}", Self::dp(self.mean), mean, mean_unit)
+        let (mean, mean_unit) = value_unit(self.mean);
+        format!("{:.*?}{}", dp(self.mean), mean, mean_unit)
     }
 
     pub fn fmt_stdev(&self) -> String {
-        let (stdev, stdev_unit) = Self::value(self.stdev);
-        format!("{:.*?}{}", Self::dp(self.stdev), stdev, stdev_unit)
+        let (stdev, stdev_unit) = value_unit(self.stdev);
+        format!("{:.*?}{}", dp(self.stdev), stdev, stdev_unit)
     }
 
     pub fn fmt_min(&self) -> String {
-        let (min, min_unit) = Self::value(self.min);
-        format!("{:.*?}{}", Self::dp(self.min), min, min_unit)
+        let (min, min_unit) = value_unit(self.min);
+        format!("{:.*?}{}", dp(self.min), min, min_unit)
     }
 
     pub fn fmt_max(&self) -> String {
-        let (max, max_unit) = Self::value(self.max);
-        format!("{:.*?}{}", Self::dp(self.max), max, max_unit)
+        let (max, max_unit) = value_unit(self.max);
+        format!("{:.*?}{}", dp(self.max), max, max_unit)
     }
 
     pub fn to_json(&self, name: &str) -> JsonSummary {

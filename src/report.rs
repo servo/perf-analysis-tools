@@ -1,11 +1,16 @@
-use std::{collections::BTreeMap, fs::File, path::Path};
+use std::{collections::BTreeMap, fs::File, io::Write, path::Path};
 
-use jane_eyre::eyre::{self, OptionExt};
+use dataurl::DataUrl;
+use jane_eyre::eyre::{self, Context, OptionExt};
+use poloto::{
+    num::float::{FloatFmt, FloatTickFmt},
+    ticks::{tick_fmt::WithTickFmt, TickDistGen, TickDistribution},
+};
 use tracing::info;
 
 use crate::{
     study::{Engine, KeyedCpuConfig, KeyedEngine, KeyedSite, Study},
-    summary::{JsonSummaries, JsonSummary, Summary},
+    summary::{fmt_seconds_short, EventKind, JsonRawSeries, JsonSummaries, JsonSummary, Summary},
 };
 
 static USER_FACING_PAINT_METRICS: &str = "FP FCP";
@@ -28,6 +33,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
 
     let mut real_events_map = BTreeMap::default();
     let mut synthetic_and_interpreted_events_map = BTreeMap::default();
+    let mut raw_series_map = BTreeMap::default();
     for cpu_config in study.cpu_configs() {
         for site in study.sites() {
             for engine in study.engines() {
@@ -40,6 +46,7 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
                     (cpu_config.key, site.key, engine.key),
                     summaries.synthetic_and_interpreted_events,
                 );
+                raw_series_map.insert((cpu_config.key, site.key, engine.key), summaries.raw_series);
             }
         }
     }
@@ -47,7 +54,13 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
     // Print sections for user-facing paint metrics.
     for summary_key in USER_FACING_PAINT_METRICS.split(" ") {
         println!("### {summary_key} (synthetic)\n");
-        print_section(&study, summary_key, &synthetic_and_interpreted_events_map)?;
+        print_section(
+            &study,
+            &raw_series_map,
+            &synthetic_and_interpreted_events_map,
+            EventKind::SyntheticOrInterpreted,
+            summary_key,
+        )?;
     }
 
     // If there were any Servo results, print sections for real Servo events.
@@ -58,7 +71,13 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
     {
         for summary_key in REAL_SERVO_EVENTS.split(" ") {
             println!("### {summary_key} (real)\n");
-            print_section(&study, summary_key, &real_events_map)?;
+            print_section(
+                &study,
+                &raw_series_map,
+                &real_events_map,
+                EventKind::Servo,
+                summary_key,
+            )?;
         }
     }
 
@@ -75,20 +94,38 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
     {
         for summary_key in REAL_CHROMIUM_EVENTS.split(" ") {
             println!("### {summary_key} (real)\n");
-            print_section(&study, summary_key, &real_events_map)?;
+            print_section(
+                &study,
+                &raw_series_map,
+                &real_events_map,
+                EventKind::Chromium,
+                summary_key,
+            )?;
         }
     }
 
     // Print sections for rendering phases model.
     for summary_key in RENDERING_PHASES_MODEL_EVENTS.split(" ") {
         println!("### {summary_key} (synthetic)\n");
-        print_section(&study, summary_key, &synthetic_and_interpreted_events_map)?;
+        print_section(
+            &study,
+            &raw_series_map,
+            &synthetic_and_interpreted_events_map,
+            EventKind::SyntheticOrInterpreted,
+            summary_key,
+        )?;
     }
 
     // Print sections for overall rendering time model.
     for summary_key in OVERALL_RENDERING_TIME_MODEL_EVENTS.split(" ") {
         println!("### {summary_key} (synthetic)\n");
-        print_section(&study, summary_key, &synthetic_and_interpreted_events_map)?;
+        print_section(
+            &study,
+            &raw_series_map,
+            &synthetic_and_interpreted_events_map,
+            EventKind::SyntheticOrInterpreted,
+            summary_key,
+        )?;
     }
 
     Ok(())
@@ -111,11 +148,76 @@ fn load_summaries(
 
 fn print_section(
     study: &Study,
-    summary_key: &str,
+    raw_series_map: &BTreeMap<(&str, &str, &str), Vec<JsonRawSeries>>,
     summaries_map: &BTreeMap<(&str, &str, &str), Vec<JsonSummary>>,
+    event_kind: EventKind,
+    summary_key: &str,
 ) -> eyre::Result<()> {
     for site in study.sites() {
         println!("#### {}\n", site.key);
+
+        // Plot all of the data for this metric and site, organised by CPU config and engine.
+        // First we define a tick distribution factory for the x axis, based on the default for f64
+        // (`FloatTickFmt: TickDistGen`) but tweaked with our own stringifier. `FloatTickFmt` is
+        // not to be confused with `FloatFmt: TickFmt`, the default stringifier for f64.
+        struct TicksX;
+        impl TickDistGen<f64> for TicksX {
+            type Res = TickDistribution<Vec<f64>, WithTickFmt<FloatFmt, fn(&f64) -> String>>;
+            fn generate(
+                self,
+                data: &poloto::ticks::DataBound<f64>,
+                canvas: &poloto::ticks::RenderFrameBound,
+                req: poloto::ticks::IndexRequester,
+            ) -> Self::Res {
+                FloatTickFmt
+                    .generate(data, canvas, req)
+                    .with_tick_fmt(|&x| fmt_seconds_short(x))
+            }
+        }
+        // Next we look up all of the raw data series (`JsonRawSeries`) for this metric and site.
+        // There is one raw data series for each CPU config and engine. Create a plot builder for
+        // each series, pair them up, and collect them into a vec.
+        let mut plots = vec![];
+        for (cpu_config, site, engine) in study.cpu_configs().flat_map(|cpu_config| {
+            study
+                .engines()
+                .map(move |engine| (cpu_config, site, engine))
+        }) {
+            if let Some(series) = raw_series_map.get(&(cpu_config.key, site.key, engine.key)) {
+                if let Some(series) = series
+                    .iter()
+                    .find(|s| s.kind == event_kind && s.name == summary_key)
+                {
+                    let plot = poloto::build::plot(format!("{} {}", cpu_config.key, engine.key));
+                    plots.push((series, plot));
+                }
+            }
+        }
+        // Plot each series on the respective plot as (time value ms: f64, index: i128), where
+        // `index` is in reverse order of series. Since the y axis increases upwards but the legend
+        // is read from top to bottom, this makes the plots appear in the same order as the legend.
+        let series_count = i128::try_from(plots.len()).wrap_err("Too many series")?;
+        let plots = plots.into_iter().enumerate().map(|(i, (series, plot))| {
+            plot.scatter(series.xs.iter().map(|&x| (x, series_count - i as i128)))
+        });
+        // Render the plot as both an SVG file and a data URL.
+        let plot_svg = poloto::frame_build()
+            .data(poloto::plots!(
+                // Make sure x = 0ms is in view, plus space around each y series.
+                poloto::build::markers([0f64], [0, series_count + 1]),
+                plots
+            ))
+            .map_xticks(|_| TicksX)
+            .build_and_label((format!("{} {}", summary_key, site.key), "time", "sample"))
+            .append_to(poloto::header().light_theme())
+            .render_string()?;
+        let plot_path = format!("{}.{}.{}.svg", event_kind, summary_key, site.key);
+        File::create(&plot_path)?.write_all(plot_svg.as_bytes())?;
+        let mut plot_data_url = DataUrl::new();
+        plot_data_url.set_media_type(Some("image/svg+xml".to_owned()));
+        plot_data_url.set_data(plot_svg.as_bytes());
+        println!("<img src='{}'>\n", plot_data_url.to_string());
+
         println!("<table>");
         println!("<tr>");
         println!("<th colspan=2>");

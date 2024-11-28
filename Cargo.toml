@@ -5,11 +5,13 @@ name = "analyse"
 edition = "2021"
 
 [dependencies]
+dataurl = "0.1.2"
 html5ever = "0.27.0"
 jane-eyre = "0.3.0"
 markup5ever_rcdom = "0.3.0"
 mktemp = "0.5.1"
 perfetto_protos = "0.48.1"
+poloto = "19.1.2"
 protobuf = "3.7.1"
 rayon = "1.10.0"
 serde = { version = "1.0.210", features = ["derive"] }
