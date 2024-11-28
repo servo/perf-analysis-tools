@@ -123,11 +123,11 @@ fn print_section(
             println!("<th>{}", cpu_config.key);
         }
         let list: &[(&str, Box<dyn Fn(&Summary<_>) -> String>)] = &[
-            ("n", Box::new(|s| s.fmt_n())),
-            ("μ", Box::new(|s| s.fmt_mean())),
-            ("s", Box::new(|s| s.fmt_stdev())),
+            // ("n", Box::new(|s| s.fmt_n())),
+            // ("μ", Box::new(|s| s.fmt_mean())),
+            // ("s", Box::new(|s| s.fmt_stdev())),
             ("min", Box::new(|s| s.fmt_min())),
-            ("max", Box::new(|s| s.fmt_max())),
+            // ("max", Box::new(|s| s.fmt_max())),
         ];
         for (statistic_label, statistic_getter) in list {
             // Count the actual number of rows we will need, for rowspan.
