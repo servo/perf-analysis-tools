@@ -120,7 +120,15 @@ fn print_section(
         println!("<tr>");
         println!("<th>");
         for cpu_config in study.cpu_configs() {
-            println!("<th>{}", cpu_config.key);
+            println!("<th colspan=4>{}", cpu_config.key);
+        }
+        println!("<tr>");
+        println!("<th>");
+        for _ in study.cpu_configs() {
+            println!("<th>min");
+            println!("<th>µ");
+            println!("<th>s");
+            println!("<th>n");
         }
         for engine in study.engines() {
             // Loop and break to print a `<tr>` and `<th>` only when `summary_key` is applicable to `engine`.
@@ -146,6 +154,9 @@ fn print_section(
                 if let Some(summary) = summaries.iter().find(|summary| summary.name == summary_key)
                 {
                     println!("<td title='{}'>{}", summary.full, summary.representative);
+                    println!("<td title='{}'>{}", summary.full, summary.raw.fmt_mean());
+                    println!("<td title='{}'>{}", summary.full, summary.raw.fmt_stdev());
+                    println!("<td title='{}'>{}", summary.full, summary.raw.fmt_n());
                 }
             }
         }
