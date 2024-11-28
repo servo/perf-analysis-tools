@@ -231,33 +231,42 @@ impl Summary<f64> {
     }
 
     pub fn fmt_representative(&self) -> String {
-        let (min, min_unit) = Self::value(self.min);
-
-        format!("{:.*?}{}", Self::dp(self.min), min, min_unit)
+        self.fmt_min()
     }
 
     pub fn fmt_full(&self) -> String {
-        let (mean, mean_unit) = Self::value(self.mean);
-        let (stdev, stdev_unit) = Self::value(self.stdev);
-        let (min, min_unit) = Self::value(self.min);
-        let (max, max_unit) = Self::value(self.max);
-
         format!(
-            "n={}, μ={:.*?}{}, s={:.*?}{}, min={:.*?}{}, max={:.*?}{}",
-            self.n,
-            Self::dp(self.mean),
-            mean,
-            mean_unit,
-            Self::dp(self.stdev),
-            stdev,
-            stdev_unit,
-            Self::dp(self.min),
-            min,
-            min_unit,
-            Self::dp(self.max),
-            max,
-            max_unit,
+            "n={}, μ={}, s={}, min={}, max={}",
+            self.fmt_n(),
+            self.fmt_mean(),
+            self.fmt_stdev(),
+            self.fmt_min(),
+            self.fmt_max(),
         )
+    }
+
+    pub fn fmt_n(&self) -> String {
+        format!("{}", self.n)
+    }
+
+    pub fn fmt_mean(&self) -> String {
+        let (mean, mean_unit) = Self::value(self.mean);
+        format!("{:.*?}{}", Self::dp(self.mean), mean, mean_unit)
+    }
+
+    pub fn fmt_stdev(&self) -> String {
+        let (stdev, stdev_unit) = Self::value(self.stdev);
+        format!("{:.*?}{}", Self::dp(self.stdev), stdev, stdev_unit)
+    }
+
+    pub fn fmt_min(&self) -> String {
+        let (min, min_unit) = Self::value(self.min);
+        format!("{:.*?}{}", Self::dp(self.min), min, min_unit)
+    }
+
+    pub fn fmt_max(&self) -> String {
+        let (max, max_unit) = Self::value(self.max);
+        format!("{:.*?}{}", Self::dp(self.max), max, max_unit)
     }
 
     pub fn to_json(&self, name: &str) -> JsonSummary {
