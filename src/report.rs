@@ -1,11 +1,15 @@
 use std::{collections::BTreeMap, fs::File, io::Write, path::Path};
 
 use dataurl::DataUrl;
-use jane_eyre::eyre::{self, Context, OptionExt};
+use jane_eyre::eyre::{self, OptionExt};
 use poloto::{
     num::float::{FloatFmt, FloatTickFmt},
-    ticks::{tick_fmt::WithTickFmt, TickDistGen, TickDistribution},
+    ticks::{
+        tick_fmt::{TickFmt, WithTickFmt},
+        IndexRequester, RenderFrameBound, TickDistGen, TickDistribution, TickRes,
+    },
 };
+use rand::Rng;
 use tracing::info;
 
 use crate::{
@@ -174,6 +178,32 @@ fn print_section(
                     .with_tick_fmt(|&x| fmt_seconds_short(x))
             }
         }
+        // Then we define one for the y axis that gives us exactly one tick every 1.0f64,
+        // stringifying the labels without any decimal places.
+        pub struct SeriesFmt;
+        impl TickFmt<f64> for SeriesFmt {
+            fn write_tick(&self, writer: &mut dyn std::fmt::Write, x: &f64) -> std::fmt::Result {
+                write!(writer, "{x:.0}")
+            }
+        }
+        pub struct SeriesTickFmt;
+        impl TickDistGen<f64> for SeriesTickFmt {
+            type Res = TickDistribution<Vec<f64>, SeriesFmt>;
+            fn generate(
+                self,
+                data: &poloto::ticks::DataBound<f64>,
+                _: &RenderFrameBound,
+                _: IndexRequester,
+            ) -> Self::Res {
+                let min = data.min as i128;
+                let max = data.max as i128;
+                TickDistribution {
+                    res: TickRes { dash_size: None },
+                    iter: (min..=max).map(|x| x as f64).collect(),
+                    fmt: SeriesFmt,
+                }
+            }
+        }
         // Next we look up all of the raw data series (`JsonRawSeries`) for this metric and site.
         // There is one raw data series for each CPU config and engine. Create a plot builder for
         // each series, pair them up, and collect them into a vec.
@@ -196,18 +226,24 @@ fn print_section(
         // Plot each series on the respective plot as (time value ms: f64, index: i128), where
         // `index` is in reverse order of series. Since the y axis increases upwards but the legend
         // is read from top to bottom, this makes the plots appear in the same order as the legend.
-        let series_count = i128::try_from(plots.len()).wrap_err("Too many series")?;
+        let series_count = plots.len() as f64;
         let plots = plots.into_iter().enumerate().map(|(i, (series, plot))| {
-            plot.scatter(series.xs.iter().map(|&x| (x, series_count - i as i128)))
+            plot.scatter(series.xs.iter().map(|&x| {
+                (
+                    x,
+                    series_count - i as f64 + (rand::thread_rng().gen::<f64>() - 0.5f64) * 0.25f64,
+                )
+            }))
         });
         // Render the plot as both an SVG file and a data URL.
         let plot_svg = poloto::frame_build()
             .data(poloto::plots!(
                 // Make sure x = 0ms is in view, plus space around each y series.
-                poloto::build::markers([0f64], [0, series_count + 1]),
+                poloto::build::markers([0f64], [0f64, series_count + 1.0f64]),
                 plots
             ))
             .map_xticks(|_| TicksX)
+            .map_yticks(|_| SeriesTickFmt)
             .build_and_label((format!("{} {}", summary_key, site.key), "time", "sample"))
             .append_to(poloto::header().light_theme())
             .render_string()?;
