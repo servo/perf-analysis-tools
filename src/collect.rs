@@ -69,7 +69,7 @@ fn create_sample(
         return Ok(());
     }
 
-    if let Engine::ChromeDriver { path } = engine.engine {
+    if let Engine::ChromeDriver { path, .. } = engine.engine {
         // Resolve path against PATH if needed. ChromeDriver or WebDriver seems to need this.
         let query = SHELL
             .lock()

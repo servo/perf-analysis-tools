@@ -57,6 +57,7 @@ isolate_cpu_command = ["sudo", "../../isolate-cpu-for-shell.sh"]  # on Linux
 #   - `Chromium` uses benchmark-chromium.sh
 #   - `ChromeDriver` uses ChromeDriver, a WebDriver-based approach
 # - If `path` has no slashes, it represents a command in your PATH
+# - `description` (optional) is shown in the report
 [engines]
 "servo1" = { type = "Servo", path = "/path/to/servo1/servo" }
 "servo2" = { type = "Servo", path = "/path/to/servo2/servo" }

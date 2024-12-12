@@ -55,6 +55,23 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
         }
     }
 
+    // Print the engine keys and their descriptions.
+    println!("<ul>");
+    for engine in study.engines() {
+        print!("<li><strong>{}</strong> = ", engine.key);
+        if let Some(description) = engine.description() {
+            println!("{}", description);
+        } else {
+            println!(
+                "<code>{}</code> at <code>{}</code>",
+                engine.type_name(),
+                engine.browser_path(),
+            );
+        }
+    }
+    println!("</ul>");
+    println!();
+
     // Print sections for user-facing paint metrics.
     for summary_key in USER_FACING_PAINT_METRICS.split(" ") {
         println!("<h3>{summary_key} (synthetic)</h3>\n");

@@ -49,9 +49,18 @@ pub struct KeyedSite<'study> {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 pub enum Engine {
-    Servo { path: String },
-    Chromium { path: String },
-    ChromeDriver { path: String },
+    Servo {
+        path: String,
+        description: Option<String>,
+    },
+    Chromium {
+        path: String,
+        description: Option<String>,
+    },
+    ChromeDriver {
+        path: String,
+        description: Option<String>,
+    },
 }
 #[derive(Clone, Copy, Debug)]
 pub struct KeyedEngine<'study> {
@@ -161,11 +170,27 @@ impl KeyedEngine<'_> {
         }
     }
 
+    pub fn type_name(&self) -> &str {
+        match self.engine {
+            Engine::Servo { .. } => "Servo",
+            Engine::Chromium { .. } => "Chromium",
+            Engine::ChromeDriver { .. } => "ChromeDriver",
+        }
+    }
+
     pub fn browser_path(&self) -> &str {
         match self.engine {
-            Engine::Servo { path } => path,
-            Engine::Chromium { path } => path,
-            Engine::ChromeDriver { path } => path,
+            Engine::Servo { path, .. } => path,
+            Engine::Chromium { path, .. } => path,
+            Engine::ChromeDriver { path, .. } => path,
+        }
+    }
+
+    pub fn description(&self) -> Option<&str> {
+        match self.engine {
+            Engine::Servo { description, .. } => description.as_deref(),
+            Engine::Chromium { description, .. } => description.as_deref(),
+            Engine::ChromeDriver { description, .. } => description.as_deref(),
         }
     }
 }
