@@ -12,6 +12,9 @@ pub struct Study {
     cpu_configs: BTreeMap<String, CpuConfig>,
     sites: BTreeMap<String, Site>,
     engines: BTreeMap<String, Engine>,
+
+    #[serde(skip)]
+    pub source_toml: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -70,9 +73,10 @@ pub struct KeyedEngine<'study> {
 
 impl Study {
     pub fn load(path: impl AsRef<Path>) -> eyre::Result<Self> {
-        let mut result = String::default();
-        File::open(path)?.read_to_string(&mut result)?;
-        let result: Study = toml::from_str(&result)?;
+        let mut source = String::default();
+        File::open(path)?.read_to_string(&mut source)?;
+        let mut result: Study = toml::from_str(&source)?;
+        result.source_toml = source;
 
         Ok(result)
     }

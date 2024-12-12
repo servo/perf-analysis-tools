@@ -56,20 +56,34 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
     }
 
     // Print the engine keys and their descriptions.
+    // FIXME: Use askama to avoid having to escape HTML manually.
     println!("<ul>");
     for engine in study.engines() {
-        print!("<li><strong>{}</strong> = ", engine.key);
+        print!(
+            "<li><strong>{}</strong> = ",
+            escape_html_for_inner_html(engine.key),
+        );
         if let Some(description) = engine.description() {
+            // HTML is allowed here.
             println!("{}", description);
         } else {
             println!(
                 "<code>{}</code> at <code>{}</code>",
-                engine.type_name(),
-                engine.browser_path(),
+                escape_html_for_inner_html(engine.type_name()),
+                escape_html_for_inner_html(engine.browser_path()),
             );
         }
     }
     println!("</ul>");
+    println!();
+
+    // Print the study config file.
+    println!("<details><summary>study.toml</summary>\n");
+    println!(
+        "<pre><code>{}</code></pre>",
+        escape_html_for_inner_html(&study.source_toml),
+    );
+    println!("</details>");
     println!();
 
     // Print sections for user-facing paint metrics.
@@ -343,4 +357,8 @@ fn print_section(
     }
 
     Ok(())
+}
+
+fn escape_html_for_inner_html(text: &str) -> String {
+    text.replace("&", "&amp;").replace("<", "&lt;")
 }
