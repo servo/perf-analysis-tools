@@ -1,7 +1,8 @@
+use core::str;
 use std::{collections::BTreeMap, fs::File, io::Write, path::Path};
 
 use dataurl::DataUrl;
-use jane_eyre::eyre::{self, OptionExt};
+use jane_eyre::eyre::{self, bail, eyre, OptionExt};
 use poloto::{
     num::float::{FloatFmt, FloatTickFmt},
     ticks::{
@@ -13,6 +14,7 @@ use rand::Rng;
 use tracing::info;
 
 use crate::{
+    shell::SHELL,
     study::{Engine, KeyedCpuConfig, KeyedEngine, KeyedSite, Study},
     summary::{fmt_seconds_short, EventKind, JsonRawSeries, JsonSummaries, JsonSummary, Summary},
 };
@@ -55,9 +57,31 @@ pub fn main(args: Vec<String>) -> eyre::Result<()> {
         }
     }
 
-    // Print the engine keys and their descriptions.
+    // Print the tooling version, engine keys, and engine descriptions.
     // FIXME: Use askama to avoid having to escape HTML manually.
     println!("<ul>");
+    let version = SHELL
+        .lock()
+        .map_err(|e| eyre!("Mutex poisoned: {e:?}"))?
+        .run(
+            include_str!("../get-tooling-version.sh"),
+            Vec::<&str>::default(),
+        )?
+        .output()?;
+    if !version.status.success() {
+        bail!("Process failed: {}", version.status);
+    }
+    let version = str::from_utf8(&version.stdout)?
+        .strip_suffix("\n")
+        .ok_or_eyre("Output has no trailing newline")?;
+    println!(
+        r#"<li><a href="https://github.com/servo/perf-analysis-tools">perf-analysis-tools</a> version:"#,
+    );
+    println!(
+        r#"<a href="https://github.com/servo/perf-analysis-tools/commit/{}">{}</a>"#,
+        escape_html_for_attribute(version),
+        escape_html_for_inner_html(version),
+    );
     for engine in study.engines() {
         print!(
             "<li><strong>{}</strong> = ",
@@ -361,4 +385,10 @@ fn print_section(
 
 fn escape_html_for_inner_html(text: &str) -> String {
     text.replace("&", "&amp;").replace("<", "&lt;")
+}
+
+fn escape_html_for_attribute(text: &str) -> String {
+    text.replace("&", "&amp;")
+        .replace("'", "&apos;")
+        .replace(r#"""#, "&quot;")
 }
