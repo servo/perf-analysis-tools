@@ -166,10 +166,6 @@ fn analyse_individual(url: &str, path: &str) -> eyre::Result<IndividualAnalysis>
     // Perfetto traces contain all of the durations we need except metrics,
     // which are in HTML traces only for now, so we need to merge the traces.
     // First we need to align the start times.
-    assert_eq!(
-        html_trace.relevant_events[0].name,
-        perfetto_trace.relevant_events[0].name
-    );
     debug!(
         "First event in HTML trace: {:?}",
         html_trace.relevant_events[0]
@@ -178,6 +174,13 @@ fn analyse_individual(url: &str, path: &str) -> eyre::Result<IndividualAnalysis>
         "First event in Perfetto trace: {:?}",
         perfetto_trace.relevant_events[0]
     );
+    if html_trace.relevant_events[0].name != perfetto_trace.relevant_events[0].name {
+        bail!(
+            "First events in HTML trace and Perfetto trace are different ({} != {})",
+            html_trace.relevant_events[0].name,
+            perfetto_trace.relevant_events[0].name,
+        );
+    }
     let html_trace_start = html_trace.relevant_events[0].start;
     let html_trace_events = html_trace.relevant_events.into_iter().map(|e| Event {
         start: e.start - html_trace_start,
