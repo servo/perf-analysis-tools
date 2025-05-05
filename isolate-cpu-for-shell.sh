@@ -91,9 +91,9 @@ if test -r /proc/$shell_pid/exe ; then
 
     # Create a “shield” cgroup and assign the dedicated CPUs to it.
     mkdir -p /sys/fs/cgroup/shield
-    echo "+cpu" >> /sys/fs/cgroup/shield/cgroup.subtree_control
-    echo "+cpuset" >> /sys/fs/cgroup/shield/cgroup.subtree_control
-    echo "$selected_cpus"   > /sys/fs/cgroup/shield/cpuset.cpus
+    echo "+cpu" | sudo tee -a /sys/fs/cgroup/shield/cgroup.subtree_control
+    echo "+cpuset" | sudo tee -a /sys/fs/cgroup/shield/cgroup.subtree_control
+    echo "$selected_cpus" | sudo tee /sys/fs/cgroup/shield/cpuset.cpus
 
     # Move all other cgroups to the remaining CPUs.
     for cpscpus in /sys/fs/cgroup/**/cpuset.cpus ; do
