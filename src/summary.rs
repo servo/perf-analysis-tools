@@ -37,6 +37,7 @@ pub struct Summary<T> {
     pub stdev: T,
     pub min: T,
     pub max: T,
+    pub median: T,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -215,12 +216,31 @@ impl<IndividualType> Analysis<IndividualType> {
             .max_by(|p, q| p.total_cmp(q))
             .ok_or_eyre("No maximum")?;
 
+        let mut median = xs
+            .iter()
+            .copied()
+            .filter(|x| !x.is_nan())
+            .collect::<Vec<_>>();
+        median.sort_by(|p, q| p.total_cmp(q));
+        let median = if median.len() % 2 == 0 {
+            // even
+            // 0 1 2 3
+            // 4/2 = 2
+            (median[median.len() / 2 - 1] + median[median.len() / 2]) / 2.0
+        } else {
+            // odd
+            // 0 1 2 3 4
+            // 5 / 2 = 2
+            median[median.len() / 2]
+        };
+
         Ok(Summary {
             n: self.individuals.len(),
             mean,
             stdev,
             min,
             max,
+            median,
         })
     }
 }
@@ -293,6 +313,11 @@ impl Summary<f64> {
     pub fn fmt_max(&self) -> String {
         let (max, max_unit) = value_unit(self.max);
         format!("{:.*?}{}", dp(self.max), max, max_unit)
+    }
+
+    pub fn fmt_median(&self) -> String {
+        let (median, median_unit) = value_unit(self.median);
+        format!("{:.*?}{}", dp(self.median), median, median_unit)
     }
 
     pub fn to_json(&self, name: &str) -> JsonSummary {
