@@ -29,7 +29,7 @@ for iptables in iptables ip6tables; do
     # No `--suppl-groups` here, otherwise the rules will match all of your traffic.
     iptables_check_or_add_nat_rule $iptables OUTPUT -p tcp -m owner --gid-owner "$proxied_group" --dport 80 -j REDIRECT --to-port 8080
     iptables_check_or_add_nat_rule $iptables OUTPUT -p tcp -m owner --gid-owner "$proxied_group" --dport 443 -j REDIRECT --to-port 8080
-    $iptables -vnt nat -L -Z | rg "owner GID match $proxied_gid "
+    $iptables -vt nat -L -Z | rg "owner GID match $proxied_group "
 done
 echo
 
