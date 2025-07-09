@@ -20,7 +20,7 @@ use crate::{
 };
 
 static USER_FACING_PAINT_METRICS: &str = "FP FCP";
-static REAL_SERVO_EVENTS: &str = "Compositing LayoutPerform ScriptEvaluate ScriptParseHTML";
+static REAL_SERVO_EVENTS: &str = "Compositing LayoutPerform Layout ScriptEvaluate ScriptParseHTML";
 static REAL_CHROMIUM_EVENTS: &str = "EvaluateScript FunctionCall Layerize Layout Paint ParseHTML PrePaint TimerFire UpdateLayoutTree";
 static RENDERING_PHASES_MODEL_EVENTS: &str = "Parse Script Layout Rasterise";
 static OVERALL_RENDERING_TIME_MODEL_EVENTS: &str = "Renderer";
@@ -316,11 +316,12 @@ fn print_section(
             println!("<th>{}", cpu_config.key);
         }
         let list: &[(&str, Box<dyn Fn(&Summary<_>) -> String>)] = &[
-            // ("n", Box::new(|s| s.fmt_n())),
-            // ("μ", Box::new(|s| s.fmt_mean())),
-            // ("s", Box::new(|s| s.fmt_stdev())),
+            ("n", Box::new(|s| s.fmt_n())),
+            ("μ", Box::new(|s| s.fmt_mean())),
+            ("s", Box::new(|s| s.fmt_stdev())),
             ("min", Box::new(|s| s.fmt_min())),
-            // ("max", Box::new(|s| s.fmt_max())),
+            ("max", Box::new(|s| s.fmt_max())),
+            ("median", Box::new(|s| s.fmt_median())),
         ];
         for (statistic_label, statistic_getter) in list {
             // Count the actual number of rows we will need, for rowspan.

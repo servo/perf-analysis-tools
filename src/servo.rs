@@ -25,10 +25,10 @@ use crate::{
     },
 };
 
-static RENDERER_NAMES: &'static str = "ScriptParseHTML ScriptEvaluate LayoutPerform Compositing";
+static RENDERER_NAMES: &'static str = "ScriptParseHTML ScriptEvaluate LayoutPerform Layout Compositing";
 static PARSE_NAMES: &'static str = "ScriptParseHTML";
 static SCRIPT_NAMES: &'static str = "ScriptEvaluate";
-static LAYOUT_NAMES: &'static str = "LayoutPerform";
+static LAYOUT_NAMES: &'static str = "LayoutPerform Layout";
 static RASTERISE_NAMES: &'static str = "Compositing";
 static NO_URL_NAMES: &'static str = "Compositing IpcReceiver";
 static HTML_ONLY_NAMES: &'static str =
