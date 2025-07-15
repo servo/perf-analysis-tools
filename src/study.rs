@@ -56,6 +56,10 @@ pub enum Engine {
         path: String,
         description: Option<String>,
     },
+    ServoDriver {
+        path: String,
+        description: Option<String>,
+    },
     Chromium {
         path: String,
         description: Option<String>,
@@ -167,6 +171,9 @@ impl KeyedEngine<'_> {
     pub fn benchmark_runner_code(&self) -> &str {
         match self.engine {
             Engine::Servo { .. } => include_str!("../benchmark-servo.sh"),
+            Engine::ServoDriver { .. } => {
+                panic!("BUG: Engine::ServoDriver has no benchmark runner script")
+            }
             Engine::Chromium { .. } => include_str!("../benchmark-chromium.sh"),
             Engine::ChromeDriver { .. } => {
                 panic!("BUG: Engine::ChromeDriver has no benchmark runner script")
@@ -177,6 +184,7 @@ impl KeyedEngine<'_> {
     pub fn type_name(&self) -> &str {
         match self.engine {
             Engine::Servo { .. } => "Servo",
+            Engine::ServoDriver { .. } => "ServoDriver",
             Engine::Chromium { .. } => "Chromium",
             Engine::ChromeDriver { .. } => "ChromeDriver",
         }
@@ -185,6 +193,7 @@ impl KeyedEngine<'_> {
     pub fn browser_path(&self) -> &str {
         match self.engine {
             Engine::Servo { path, .. } => path,
+            Engine::ServoDriver { path, .. } => path,
             Engine::Chromium { path, .. } => path,
             Engine::ChromeDriver { path, .. } => path,
         }
@@ -193,8 +202,18 @@ impl KeyedEngine<'_> {
     pub fn description(&self) -> Option<&str> {
         match self.engine {
             Engine::Servo { description, .. } => description.as_deref(),
+            Engine::ServoDriver { description, .. } => description.as_deref(),
             Engine::Chromium { description, .. } => description.as_deref(),
             Engine::ChromeDriver { description, .. } => description.as_deref(),
+        }
+    }
+
+    pub fn uses_webdriver(&self) -> bool {
+        match self.engine {
+            Engine::Servo { .. } => false,
+            Engine::ServoDriver { .. } => true,
+            Engine::Chromium { .. } => false,
+            Engine::ChromeDriver { .. } => true,
         }
     }
 }

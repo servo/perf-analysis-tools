@@ -1,16 +1,19 @@
 use core::str;
 use std::{
     collections::BTreeMap,
-    fs::{copy, create_dir_all, read_dir, File},
+    fs::{copy, create_dir_all, read_dir, rename, File},
     path::Path,
     process::Command,
     thread::sleep,
+    time::Duration,
 };
 
-use jane_eyre::eyre::{self, bail, eyre, OptionExt};
+use jane_eyre::eyre::{self, bail, eyre, Context, OptionExt};
 use serde_json::json;
-use tracing::{debug, info};
-use webdriver_client::{chrome::ChromeDriver, messages::NewSessionCmd, Driver, LocationStrategy};
+use tracing::{debug, error, info, warn};
+use webdriver_client::{
+    chrome::ChromeDriver, messages::NewSessionCmd, Driver, HttpDriverBuilder, LocationStrategy,
+};
 
 use crate::{
     shell::SHELL,
@@ -69,12 +72,12 @@ fn create_sample(
         return Ok(());
     }
 
-    if let Engine::ChromeDriver { path, .. } = engine.engine {
+    if engine.uses_webdriver() {
         // Resolve path against PATH if needed. ChromeDriver or WebDriver seems to need this.
         let query = SHELL
             .lock()
             .map_err(|e| eyre!("Mutex poisoned: {e:?}"))?
-            .run(include_str!("../query-path.sh"), [path])?
+            .run(include_str!("../query-path.sh"), [engine.browser_path()])?
             .output()?;
         if !query.status.success() {
             bail!("Process failed: {}", query.status);
@@ -84,54 +87,174 @@ fn create_sample(
             .ok_or_eyre("Output has no trailing newline")?;
 
         for i in 1..=study.sample_size {
-            info!("Starting ChromeDriver");
-            let driver =
-                ChromeDriver::spawn().map_err(|e| eyre!("Failed to spawn ChromeDriver: {e}"))?;
+            let (mut session, cleanup): (_, Box<dyn FnOnce(bool) -> eyre::Result<()>>) =
+                match engine.engine {
+                    Engine::Servo { .. } | Engine::Chromium { .. } => {
+                        unreachable!("Guaranteed by Engine::uses_webdriver()")
+                    }
+                    Engine::ServoDriver { .. } => {
+                        info!("Building HttpDriver client");
+                        let driver = HttpDriverBuilder::default()
+                            .url("http://127.0.0.1:7000")
+                            .build()
+                            .map_err(|e| eyre!("Failed to build HttpDriver client: {e}"))?;
 
-            // Configure the browser with WebDriver capabilities. Note that ChromeDriver takes care
-            // of running Chromium with a clean profile (much like `--user-data-dir=$(mktemp -d)`)
-            // and in a way amenable to automation (e.g. `--no-first-run`).
-            // <https://www.w3.org/TR/webdriver/#capabilities>
-            // <https://developer.chrome.com/docs/chromedriver/capabilities>
-            let mut params = NewSessionCmd::default();
-            // Do not wait for page load to complete.
-            params.always_match("pageLoadStrategy", json!("none"));
-            // Allow the use of mitmproxy replay (see ../start-mitmproxy.sh).
-            params.always_match("acceptInsecureCerts", json!(true));
+                        // Configure the browser with WebDriver capabilities.
+                        let mut params = NewSessionCmd::default();
+                        // Reset to remove the unsupported `goog:chromeOptions` capability, which Servo rejects.
+                        params.reset_always_match();
+                        // Do not wait for page load to complete.
+                        params.always_match("pageLoadStrategy", json!("none"));
+                        // TODO: Servo does not support this yet, but unlike with ChromeDriver, we run servoshell ourselves
+                        // and capabilities are just constraints, so we can just pass `--ignore-certificate-errors`.
+                        // params.always_match("acceptInsecureCerts", json!(true));
 
-            let mut mobile_emulation = BTreeMap::default();
-            if let Some(user_agent) = site.user_agent {
-                // ChromeDriver does not support the standard `userAgent` capability, which goes in
-                // the top level. Use `.goog:chromeOptions.mobileEmulation.userAgent` instead.
-                mobile_emulation.insert("userAgent", json!(user_agent));
-            }
-            if let Some((width, height)) = site.screen_size()? {
-                mobile_emulation
-                    .insert("deviceMetrics", json!({ "width": width, "height": height }));
-            }
+                        info!("Starting servoshell");
+                        let mut command = Command::new(path);
+                        command
+                            .env("SERVO_TRACING", "info")
+                            .arg("--webdriver")
+                            // Allow the use of mitmproxy replay (see ../start-mitmproxy.sh).
+                            .arg("--ignore-certificate-errors");
 
-            let pftrace_temp_dir = mktemp::Temp::new_dir()?;
-            let attempted_pftrace_temp_path = pftrace_temp_dir.join("chrome.pftrace");
-            let attempted_pftrace_temp_path = attempted_pftrace_temp_path
-                .to_str()
-                .ok_or_eyre("Unsupported path")?;
-            let mut args = vec![
-                "--trace-startup".to_owned(),
-                format!("--trace-startup-file={attempted_pftrace_temp_path}"),
-            ];
-            args.extend(site.extra_engine_arguments(engine.key).to_owned());
-            params.always_match(
-                "goog:chromeOptions",
-                json!({
-                    // <https://developer.chrome.com/docs/chromedriver/capabilities>
-                    "mobileEmulation": mobile_emulation,
-                    "binary": path,
-                    "args": args,
-                }),
-            );
+                        if let Some(user_agent) = site.user_agent {
+                            command.args(["--user-agent", user_agent]);
+                        }
+                        if let Some((width, height)) = site.screen_size()? {
+                            command.args(["--screen-size", &format!("{width}x{height}")]);
+                        }
 
-            info!("Starting Chromium");
-            let session = driver.session(&params)?;
+                        // Write a manifest that pairs the HTML and Perfetto traces of each run,
+                        // both as paths relative to the directory containing the manifest file.
+                        let index_width = study.sample_size.to_string().len();
+                        let trace_html_filename =
+                            format!("trace{:0width$}.html", i, width = index_width);
+                        let trace_html_path = sample_dir.join(&trace_html_filename);
+                        let trace_html_path =
+                            trace_html_path.to_str().ok_or_eyre("Unsupported path")?;
+                        let servo_pftrace_filename =
+                            format!("servo{:0width$}.pftrace", i, width = index_width);
+                        let servo_pftrace_path = sample_dir.join(&servo_pftrace_filename);
+                        let manifest_path = sample_dir.join(format!(
+                            "manifest{:0width$}.json",
+                            i,
+                            width = index_width
+                        ));
+                        let manifest_file = File::create(manifest_path)?;
+                        serde_json::to_writer(
+                            manifest_file,
+                            &json!({
+                                "perfetto": servo_pftrace_filename,
+                                "html": trace_html_filename,
+                            }),
+                        )?;
+
+                        let mut servoshell = command
+                            .arg(format!("--profiler-trace-path={trace_html_path}"))
+                            .arg("--print-pwm")
+                            .args(site.extra_engine_arguments(engine.key))
+                            .arg("about:blank")
+                            .spawn()
+                            .wrap_err("Failed to start servoshell")?;
+
+                        let cleanup = move |closing_failed| {
+                            // Kill servoshell, if closing the browser failed.
+                            // TODO: consider always killing if process is still running after a few seconds?
+                            if closing_failed {
+                                servoshell.kill().wrap_err("Failed to kill servoshell")?;
+                            }
+
+                            // Rename servo.pftrace to its final path.
+                            rename("servo.pftrace", servo_pftrace_path)?;
+
+                            Ok(())
+                        };
+
+                        // Wait a bit for Servo to start the WebDriver server.
+                        // FIXME: there must be a better way
+                        sleep(Duration::from_secs(1));
+
+                        info!("Connecting to WebDriver server");
+                        (driver.session(&params)?, Box::new(cleanup))
+                    }
+                    Engine::ChromeDriver { .. } => {
+                        info!("Starting ChromeDriver");
+                        let driver = ChromeDriver::spawn()
+                            .map_err(|e| eyre!("Failed to spawn ChromeDriver: {e}"))?;
+
+                        // Configure the browser with WebDriver capabilities. Note that ChromeDriver takes care
+                        // of running Chromium with a clean profile (much like `--user-data-dir=$(mktemp -d)`)
+                        // and in a way amenable to automation (e.g. `--no-first-run`).
+                        // <https://www.w3.org/TR/webdriver/#capabilities>
+                        // <https://developer.chrome.com/docs/chromedriver/capabilities>
+                        let mut params = NewSessionCmd::default();
+                        // Do not wait for page load to complete.
+                        params.always_match("pageLoadStrategy", json!("none"));
+                        // Allow the use of mitmproxy replay (see ../start-mitmproxy.sh).
+                        params.always_match("acceptInsecureCerts", json!(true));
+
+                        let mut mobile_emulation = BTreeMap::default();
+                        if let Some(user_agent) = site.user_agent {
+                            // ChromeDriver does not support the standard `userAgent` capability, which goes in
+                            // the top level. Use `.goog:chromeOptions.mobileEmulation.userAgent` instead.
+                            mobile_emulation.insert("userAgent", json!(user_agent));
+                        }
+                        if let Some((width, height)) = site.screen_size()? {
+                            mobile_emulation.insert(
+                                "deviceMetrics",
+                                json!({ "width": width, "height": height }),
+                            );
+                        }
+
+                        let pftrace_temp_dir = mktemp::Temp::new_dir()?;
+                        let attempted_pftrace_temp_path = pftrace_temp_dir.join("chrome.pftrace");
+                        let attempted_pftrace_temp_path = attempted_pftrace_temp_path
+                            .to_str()
+                            .ok_or_eyre("Unsupported path")?;
+                        let mut args = vec![
+                            "--trace-startup".to_owned(),
+                            format!("--trace-startup-file={attempted_pftrace_temp_path}"),
+                        ];
+                        args.extend(site.extra_engine_arguments(engine.key).to_owned());
+                        params.always_match(
+                            "goog:chromeOptions",
+                            json!({
+                                // <https://developer.chrome.com/docs/chromedriver/capabilities>
+                                "mobileEmulation": mobile_emulation,
+                                "binary": path,
+                                "args": args,
+                            }),
+                        );
+                        let cleanup = |_closing_failed| {
+                            // When using ChromeDriver, for some reason, Chromium fails to rename the Perfetto trace
+                            // to `--trace-startup-file`. Always kill ChromeDriver and rename it ourselves.
+                            let pftrace_path = sample_dir.join(format!(
+                                "chrome{:0width$}.pftrace",
+                                i,
+                                width = study.sample_size.to_string().len()
+                            ));
+                            let pftrace_path =
+                                pftrace_path.to_str().ok_or_eyre("Unsupported path")?;
+                            for entry in read_dir(&pftrace_temp_dir)? {
+                                let pftrace_temp_path = entry?.path();
+                                info!(
+                                    ?pftrace_temp_path,
+                                    ?pftrace_path,
+                                    "Copying Perfetto trace to sample directory"
+                                );
+                                copy(pftrace_temp_path, pftrace_path)?;
+                            }
+
+                            // Extend the lifetime of `pftrace_temp_dir` to avoid premature deletion.
+                            drop(pftrace_temp_dir);
+
+                            Ok(())
+                        };
+
+                        info!("Starting Chromium");
+                        (driver.session(&params)?, Box::new(cleanup))
+                    }
+                };
 
             info!(site.url, "Navigating to site");
             session.go(site.url)?;
@@ -166,27 +289,16 @@ fn create_sample(
                 assert_eq!(expected, actual, "Condition failed: wait_for_selectors.{selector:?}: expected {expected}, actual {actual}");
             }
 
-            // When using ChromeDriver, for some reason, Chromium fails to rename the Perfetto trace
-            // to `--trace-startup-file`. Kill ChromeDriver and rename it ourselves.
-            drop(session);
-            let pftrace_path = sample_dir.join(format!(
-                "chrome{:0width$}.pftrace",
-                i,
-                width = study.sample_size.to_string().len()
-            ));
-            let pftrace_path = pftrace_path.to_str().ok_or_eyre("Unsupported path")?;
-            for entry in read_dir(&pftrace_temp_dir)? {
-                let pftrace_temp_path = entry?.path();
-                info!(
-                    ?pftrace_temp_path,
-                    ?pftrace_path,
-                    "Copying Perfetto trace to sample directory"
-                );
-                copy(pftrace_temp_path, pftrace_path)?;
+            // Close the window gracefully.
+            // For Servo, this ensures that it can finish writing `trace.html` properly.
+            info!("Closing browser window");
+            if let Err(error) = session.close_window() {
+                error!(?error, "Failed to close browser window");
+                drop(session);
+                cleanup(true)?;
+            } else {
+                cleanup(false)?;
             }
-
-            // Extend the lifetime of `pftrace_temp_dir` to avoid premature deletion.
-            drop(pftrace_temp_dir);
         }
 
         info!("Marking sample as done");

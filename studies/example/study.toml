@@ -1,4 +1,5 @@
 # How many times to run the browser in each sample.
+# Must be at least two, so we can calculate the sample standard deviation.
 sample_size = 30
 
 # Command for traceconv. The example below is for NixOS.
@@ -28,15 +29,15 @@ isolate_cpu_command = ["sudo", "../../isolate-cpu-for-shell.sh"]  # on Linux
 # - `url` has the same meaning as the string value above
 # - `browser_open_time` (optional) is in seconds
 # - `user_agent` (optional) overrides the browser’s default user agent
-#   - Currently supported for `ChromeDriver`-type engines only
+#   - Currently supported for `ServoDriver` and `ChromeDriver`-type engines only
 #   - For `Servo`-type engines, use `extra_engine_arguments.engine = ["--user-agent", "Android"]`
 #   - For `Chromium`-type engines, use `extra_engine_arguments.engine = ["--user-agent=Android"]`
 # - `screen_size` (optional) overrides the browser’s reported screen size (not the viewport size!)
-#   - Currently supported for `ChromeDriver`-type engines only
+#   - Currently supported for `ServoDriver` and `ChromeDriver`-type engines only
 #   - For `Servo`-type engines, use `extra_engine_arguments.engine = ["--screen-size", "320x568"]`
 #   - For `Chromium`-type engines, there is no way to do this
 # - `wait_for_selectors` (optional) is a map from CSS selectors to expected element counts
-#   - Currently supported for `ChromeDriver`-type engines only
+#   - Currently supported for `ServoDriver` and `ChromeDriver`-type engines only
 #   - For `Servo`-type engines, there is no way to do this
 #   - For `Chromium`-type engines, there is no way to do this
 # - `extra_engine_arguments` (optional) is keyed on the engine key
@@ -55,11 +56,12 @@ isolate_cpu_command = ["sudo", "../../isolate-cpu-for-shell.sh"]  # on Linux
 # - `type` is one of the following:
 #   - `Servo` uses benchmark-servo.sh
 #   - `Chromium` uses benchmark-chromium.sh
+#   - `ServoDriver` runs servoshell and controls it with Servo’s WebDriver support
 #   - `ChromeDriver` uses ChromeDriver, a WebDriver-based approach
 # - If `path` has no slashes, it represents a command in your PATH
 # - `description` (optional) is shown in the report
 [engines]
 "servo1" = { type = "Servo", path = "/path/to/servo1/servo" }
-"servo2" = { type = "Servo", path = "/path/to/servo2/servo" }
+"servo2" = { type = "ServoDriver", path = "/path/to/servo2/servo" }
 "chromium1" = { type = "Chromium", path = "google-chrome-stable" }
 "chromium2" = { type = "ChromeDriver", path = "google-chrome-stable" }

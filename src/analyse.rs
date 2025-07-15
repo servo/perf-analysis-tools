@@ -41,7 +41,7 @@ fn analyse_sample(
 
     info!(?sample_dir, "Analysing sample");
     match engine.engine {
-        Engine::Servo { .. } => {
+        Engine::Servo { .. } | Engine::ServoDriver { .. } => {
             for entry in std::fs::read_dir(&sample_dir)? {
                 let path = entry?.path();
                 // Skip our own output files `summaries.*`.
@@ -98,7 +98,7 @@ fn analyse_sample(
     }
 
     let summaries = match engine.engine {
-        Engine::Servo { .. } => crate::servo::compute_summaries(args)?,
+        Engine::Servo { .. } | Engine::ServoDriver { .. } => crate::servo::compute_summaries(args)?,
         Engine::Chromium { .. } | Engine::ChromeDriver { .. } => {
             crate::chromium::compute_summaries(args)?
         }
