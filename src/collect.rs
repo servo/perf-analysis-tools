@@ -2,6 +2,7 @@ use core::str;
 use std::{
     collections::BTreeMap,
     fs::{copy, create_dir_all, read_dir, rename, File},
+    net::{Shutdown, TcpStream},
     path::Path,
     process::Command,
     thread::sleep,
@@ -157,25 +158,49 @@ fn create_sample(
                             .spawn()
                             .wrap_err("Failed to start servoshell")?;
 
-                        let cleanup = move |closing_failed| {
-                            // Kill servoshell, if closing the browser failed.
-                            // TODO: consider always killing if process is still running after a few seconds?
-                            if closing_failed {
-                                servoshell.kill().wrap_err("Failed to kill servoshell")?;
-                            }
-
-                            // Rename servo.pftrace to its final path.
-                            rename("servo.pftrace", servo_pftrace_path)?;
-
-                            Ok(())
-                        };
-
-                        // Wait a bit for Servo to start the WebDriver server.
-                        // FIXME: there must be a better way
-                        sleep(Duration::from_secs(1));
-
+                        // Try to connect to the WebDriver server for up to ten seconds, using a temporary TcpStream to
+                        // avoid session() consuming the HttpDriver.
                         info!("Connecting to WebDriver server");
-                        (driver.session(&params)?, Box::new(cleanup))
+                        let mut ok = false;
+                        for _ in 0..40 {
+                            sleep(Duration::from_millis(250));
+                            if let Ok(stream) = TcpStream::connect("127.0.0.1:7000") {
+                                stream.shutdown(Shutdown::Both)?;
+                                ok = true;
+                                break;
+                            }
+                        }
+                        if !ok {
+                            if let Err(error) = servoshell.kill() {
+                                error!(?error, "Failed to kill servoshell");
+                            }
+                            bail!("WebDriver server did not start");
+                        }
+
+                        match driver.session(&params) {
+                            Ok(session) => (
+                                session,
+                                Box::new(move |closing_failed| {
+                                    // Kill servoshell, if closing the browser failed.
+                                    // TODO: consider always killing if process is still running after a few seconds?
+                                    if closing_failed {
+                                        servoshell.kill().wrap_err("Failed to kill servoshell")?;
+                                    }
+
+                                    // Rename servo.pftrace to its final path.
+                                    rename("servo.pftrace", servo_pftrace_path)?;
+
+                                    Ok(())
+                                }),
+                            ),
+                            Err(error) => {
+                                error!(?error);
+                                if let Err(error) = servoshell.kill() {
+                                    error!(?error, "Failed to kill servoshell");
+                                }
+                                bail!("Failed to connect to WebDriver server");
+                            }
+                        }
                     }
                     Engine::ChromeDriver { .. } => {
                         info!("Starting ChromeDriver");
