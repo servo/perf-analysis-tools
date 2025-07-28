@@ -327,6 +327,7 @@ fn print_section(
             // Count the actual number of rows we will need, for rowspan.
             let mut rowspan = 0;
             for engine in study.engines() {
+                let mut configs_needing_row = 0;
                 for cpu_config in study.cpu_configs() {
                     let summaries = summaries_map
                         .get(&(cpu_config.key, site.key, engine.key))
@@ -336,8 +337,20 @@ fn print_section(
                         .find(|summary| summary.name == summary_key)
                         .is_some()
                     {
-                        rowspan += 1;
+                        configs_needing_row += 1;
                     }
+                }
+                if configs_needing_row == study.cpu_configs().count() {
+                    rowspan += 1;
+                } else if configs_needing_row != 0 {
+                    bail!(
+                        "Unsupported partial data situation: {configs_needing_row} out of {} cpu configs ({} {} {} {})",
+                        study.cpu_configs().count(),
+                        summary_key,
+                        site.key,
+                        statistic_label,
+                        engine.key,
+                    );
                 }
             }
             let mut need_statistic_label = true;

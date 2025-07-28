@@ -6,6 +6,15 @@ dump_path=$1; shift
 proxied_group=mitmproxy
 proxied_gid=$(< /etc/group tr : \\t | cut -f 1,3 | rg '^'"$proxied_group"$'\t' | cut -f 2)
 
+echo "User and groups for this shell: $(id)"
+echo "Primary group for this shell: $(id -gn)"
+echo
+
+if [ "$(id -g)" = "$proxied_gid" ]; then
+    >&2 echo 'Do not run start-mitmproxy.sh itself inside a `newgrp mitmproxy` shell!'
+    exit 1
+fi
+
 echo Configuring sysctl and iptables
 # <https://docs.mitmproxy.org/stable/howto-transparent/#1-enable-ip-forwarding>
 sysctl -w net.ipv4.ip_forward=1
@@ -29,7 +38,9 @@ for iptables in iptables ip6tables; do
     # No `--suppl-groups` here, otherwise the rules will match all of your traffic.
     iptables_check_or_add_nat_rule $iptables OUTPUT -p tcp -m owner --gid-owner "$proxied_group" --dport 80 -j REDIRECT --to-port 8080
     iptables_check_or_add_nat_rule $iptables OUTPUT -p tcp -m owner --gid-owner "$proxied_group" --dport 443 -j REDIRECT --to-port 8080
-    $iptables -vt nat -L -Z | rg "owner GID match $proxied_group "
+    # As of iptables v1.8.11 (nf_tables), we can no longer do -Z and -n at the same time.
+    $iptables -t nat -Z
+    $iptables -vnt nat -L | rg "owner GID match $proxied_gid "
 done
 echo
 
@@ -58,6 +69,7 @@ elif [ "$mode" = replay ]; then
     # `block_global=false` avoids “Warn: [17:51:27.613] Client connection from <IPv6 address> killed by block_global option.”
     # <https://stackoverflow.com/a/52281899>
     # `--server-replay-extra kill --server-replay-reuse` forces all requests to be served from our replay file only.
-    # (<https://github.com/mitmproxy/mitmproxy/discussions/5940> suggests `--set connection_strategy=lazy`, but that doesn’t actually work)
-    mitmproxy --set block_global=false --server-replay-extra kill --server-replay-reuse --mode transparent --server-replay "$dump_path"
+    # `connection_strategy=lazy` avoids making any upstream connections, even for requests that are present in our replay file.
+    # Both of these seem to be necessary for completely isolated networking that is unaffected by the upstream server.
+    mitmproxy --set connection_strategy=lazy --set block_global=false --server-replay-extra kill --server-replay-reuse --mode transparent --server-replay "$dump_path"
 fi

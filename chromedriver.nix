@@ -10,17 +10,17 @@
 
 stdenv.mkDerivation rec {
   pname = "chromedriver";
-  version = "130.0.6723.91";
+  version = "138.0.7204.168";
 
   src = let
     json = builtins.fromJSON (builtins.readFile (fetchurl {
       url = "https://googlechromelabs.github.io/chrome-for-testing/${version}.json";
-      hash = "sha256-LS6n73mzL46AQtv7FvCRguGf090NyaPvotKxUueOIj0=";
+      hash = "sha256-47Ig+EDxFijHLEoMHWFbAWb1xdGliRedBy0IuL+POjo=";
     }));
     url = (lib.findFirst (d: d.platform == "linux64") null json.downloads.chromedriver).url;
   in fetchurl {
     url = url;
-    hash = "sha256-qMlM6ilsIqm8G5KLE4uGVb/s2bNyZSyQmxsq+EHKX/c=";
+    hash = "sha256-PjU55ZNAfc/VYl+PA4Tvyr0MNHDU1ZDBnWoDOWlGO5A=";
   };
 
   nativeBuildInputs = [
