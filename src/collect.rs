@@ -180,12 +180,11 @@ fn create_sample(
                         match driver.session(&params) {
                             Ok(session) => (
                                 session,
-                                Box::new(move |closing_failed| {
-                                    // Kill servoshell, if closing the browser failed.
-                                    // TODO: consider always killing if process is still running after a few seconds?
-                                    if closing_failed {
-                                        servoshell.kill().wrap_err("Failed to kill servoshell")?;
-                                    }
+                                Box::new(move |_closing_failed| {
+                                    // Kill servoshell if it’s still running after a second. We give servoshell a
+                                    // chance to exit gracefully, so that trace.html is written completely.
+                                    sleep(Duration::from_secs(1));
+                                    servoshell.kill().wrap_err("Failed to kill servoshell")?;
 
                                     // Rename servo.pftrace to its final path.
                                     rename("servo.pftrace", servo_pftrace_path)?;

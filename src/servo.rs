@@ -267,6 +267,14 @@ fn analyse_html_trace(url: &str, path: &str) -> eyre::Result<IndividualAnalysis>
             e.metadata.as_ref().is_some_and(|m| m.url == url)
                 || NO_URL_NAMES.split(" ").find(|&n| n == e.category).is_some()
         })
+        .filter(|e| {
+            // Ignore any spurious TimeToFirstPaint events that appear due to incremental layout.
+            // FIXME: this seems to be a Servo bug that affects 2025-03-01 but not 2025-07-21
+            e.category != "TimeToFirstPaint"
+                || e.metadata
+                    .as_ref()
+                    .is_some_and(|m| m.incremental.as_deref() == Some("FirstReflow"))
+        })
         .cloned()
         .collect::<Vec<_>>();
     if relevant_events
@@ -432,6 +440,7 @@ struct HtmlTraceEvent {
 #[allow(non_snake_case)]
 struct HtmlTraceMetadata {
     url: String,
+    incremental: Option<String>,
     #[serde(flatten)]
     _rest: BTreeMap<String, Value>,
 }
