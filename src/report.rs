@@ -20,7 +20,7 @@ use crate::{
 };
 
 static USER_FACING_PAINT_METRICS: &str = "FP FCP";
-static REAL_SERVO_EVENTS: &str = "Compositing LayoutPerform ScriptEvaluate ScriptParseHTML";
+static REAL_SERVO_EVENTS: &str = "Compositing LayoutPerform Layout ScriptEvaluate ScriptParseHTML";
 static REAL_CHROMIUM_EVENTS: &str = "EvaluateScript FunctionCall Layerize Layout Paint ParseHTML PrePaint TimerFire UpdateLayoutTree";
 static RENDERING_PHASES_MODEL_EVENTS: &str = "Parse Script Layout Rasterise";
 static OVERALL_RENDERING_TIME_MODEL_EVENTS: &str = "Renderer";
