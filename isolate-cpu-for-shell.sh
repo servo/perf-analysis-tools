@@ -36,6 +36,8 @@ disable_cpu_boost() {
         echo 0 > /sys/devices/system/cpu/cpufreq/boost
     elif [ -f /sys/devices/system/cpu/intel_pstate/no_turbo ]; then
         echo 1 > /sys/devices/system/cpu/intel_pstate/no_turbo
+    else
+        >&2 echo 'Warning: don’t know how to disable CPU boost for this CPU!'
     fi
 }
 
