@@ -30,6 +30,17 @@ usage() {
     exit 1
 }
 
+disable_cpu_boost() {
+    # For the AMD 7950X, this requires Linux 6.11.
+    if [ -f /sys/devices/system/cpu/cpufreq/boost ]; then
+        echo 0 > /sys/devices/system/cpu/cpufreq/boost
+    elif [ -f /sys/devices/system/cpu/intel_pstate/no_turbo ]; then
+        echo 1 > /sys/devices/system/cpu/intel_pstate/no_turbo
+    else
+        >&2 echo 'Warning: don’t know how to disable CPU boost for this CPU!'
+    fi
+}
+
 if [ $# -gt 1 ]; then
     shell_pid=${1:-':???:'}; shift
     for cpu; do
@@ -51,8 +62,8 @@ if test -r /proc/$shell_pid/exe ; then
     echo 0 > /proc/sys/kernel/perf_event_paranoid
 
     # Disable CPU frequency boost.
-    # For the AMD 7950X, this requires Linux 6.11.
-    echo 0 > /sys/devices/system/cpu/cpufreq/boost
+    >&2 printf 'Disabling CPU frequency boost...\n'
+    disable_cpu_boost
 
     # Online all CPUs that can be offlined, in case we are rerunning this script with new CPU IDs.
     # This is also necessary to avoid write errors with EBUSY in the scaling_governor step.
@@ -110,7 +121,7 @@ if test -r /proc/$shell_pid/exe ; then
     # Put the given pid in the shield cgroup.
     echo $shell_pid > /sys/fs/cgroup/shield/cgroup.procs
     ls -al /proc/$shell_pid/exe
-    head /sys/fs/cgroup/shield/cpuset.cpus /sys/fs/cgroup/shield/cgroup.procs /sys/fs/cgroup/shield/cpuset.cpus.partition /sys/devices/system/cpu/cpufreq/boost
+    head /sys/fs/cgroup/shield/cpuset.cpus /sys/fs/cgroup/shield/cgroup.procs /sys/fs/cgroup/shield/cpuset.cpus.partition
 else
     >&2 echo 'Error: failed to find pid'
 fi

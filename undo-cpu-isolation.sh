@@ -9,9 +9,20 @@ all_cpu_ids() {
     lscpu --parse=cpu | rg -v '^#'
 }
 
+reset_cpu_boost() {
+    # For the AMD 7950X, this requires Linux 6.11.
+    if [ -f /sys/devices/system/cpu/cpufreq/boost ]; then
+        echo 1 > /sys/devices/system/cpu/cpufreq/boost
+    elif [ -f /sys/devices/system/cpu/intel_pstate/no_turbo ]; then
+        echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo
+    else
+        >&2 echo 'Warning: don’t know how to reset CPU boost for this CPU!'
+    fi
+}
+
 echo 2 > /proc/sys/kernel/randomize_va_space
 echo 4 > /proc/sys/kernel/perf_event_paranoid
-echo 1 > /sys/devices/system/cpu/cpufreq/boost
+reset_cpu_boost
 # for scg in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor ; do
 #     echo schedutil > $scg || :
 # done
