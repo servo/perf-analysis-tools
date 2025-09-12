@@ -1,21 +1,12 @@
 #!/usr/bin/env zsh
+# Isolate the CPU for benchmarking work, including process affinity via cgroup v2 cpuset.
 # Based on: <https://testbit.eu/2023/cgroup-cpuset>
 # To enable: isolate-cpu-for-shell.sh <pid> <cpu ids ...>
 #       e.g. isolate-cpu-for-shell.sh $$ 10 {13..15}
 # To disable: undo-cpu-isolation.sh
 set -euo pipefail
-
-all_cpu_and_core_ids() {
-    lscpu --parse=cpu,core | rg -v '^#' | sed $'s/,/\t/g'
-}
-
-core_id_for_cpu_id() {
-    lscpu --parse=cpu,core | rg -v '^#' | rg "^$1," | sed $'s/,/\t/g' | cut -f 2
-}
-
-cpu_ids_for_core_id() {
-    lscpu --parse=cpu,core | rg -v '^#' | rg ",$1\$" | sed $'s/,/\t/g' | cut -f 1
-}
+script_dir=${0:a:h}
+. "$script_dir/isolate-cpu-common.inc"
 
 usage() {
     >&2 echo 'Usage: isolate-cpu-for-shell <pid> <cpu ids ...>'
@@ -28,17 +19,6 @@ usage() {
     done
     >&2 echo
     exit 1
-}
-
-disable_cpu_boost() {
-    # For the AMD 7950X, this requires Linux 6.11.
-    if [ -f /sys/devices/system/cpu/cpufreq/boost ]; then
-        echo 0 > /sys/devices/system/cpu/cpufreq/boost
-    elif [ -f /sys/devices/system/cpu/intel_pstate/no_turbo ]; then
-        echo 1 > /sys/devices/system/cpu/intel_pstate/no_turbo
-    else
-        >&2 echo 'Warning: don’t know how to disable CPU boost for this CPU!'
-    fi
 }
 
 if [ $# -gt 1 ]; then
@@ -55,35 +35,7 @@ else
 fi
 
 if test -r /proc/$shell_pid/exe ; then
-    # Disable process ASLR.
-    echo 0 > /proc/sys/kernel/randomize_va_space
-
-    # Allow any user to run perf.
-    echo 0 > /proc/sys/kernel/perf_event_paranoid
-
-    # Disable CPU frequency boost.
-    >&2 printf 'Disabling CPU frequency boost...\n'
-    disable_cpu_boost
-
-    # Online all CPUs that can be offlined, in case we are rerunning this script with new CPU IDs.
-    # This is also necessary to avoid write errors with EBUSY in the scaling_governor step.
-    >&2 echo 'Onlining all cpus'
-    for online in /sys/devices/system/cpu/cpu*/online; do
-        echo 1 > "$online"
-    done
-
-    # Set all CPUs to run at maximum frequency.
-    for scg in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor ; do
-        echo performance > $scg || :
-    done
-
-    # Offline the SMT siblings of the dedicated CPUs.
-    for cpu; do
-        for cpu in $(cpu_ids_for_core_id $(core_id_for_cpu_id "$cpu") | sed 1d); do
-            >&2 echo "Offlining cpu $cpu"
-            echo 0 > "/sys/devices/system/cpu/cpu$cpu/online"
-        done
-    done
+    "$script_dir/isolate-cpu-for-hypervisor.sh" "$@"
 
     # Compute the cpu ids to reconfigure.
     selected_cpus=$(printf \%s "$*" | tr ' ' ,)
