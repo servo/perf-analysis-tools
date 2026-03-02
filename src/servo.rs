@@ -25,7 +25,8 @@ use crate::{
     },
 };
 
-static RENDERER_NAMES: &'static str = "ScriptParseHTML ScriptEvaluate LayoutPerform Layout Compositing";
+static RENDERER_NAMES: &'static str =
+    "ScriptParseHTML ScriptEvaluate LayoutPerform Layout Compositing";
 static PARSE_NAMES: &'static str = "ScriptParseHTML";
 static SCRIPT_NAMES: &'static str = "ScriptEvaluate";
 static LAYOUT_NAMES: &'static str = "LayoutPerform Layout";
