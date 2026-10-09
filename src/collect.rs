@@ -152,7 +152,6 @@ fn create_sample(
 
                         let mut servoshell = command
                             .arg(format!("--profiler-trace-path={trace_html_path}"))
-                            .arg("--print-pwm")
                             .args(site.extra_engine_arguments(engine.key))
                             .arg("about:blank")
                             .spawn()
