@@ -32,7 +32,7 @@ for i in {01..$run_count}; do
         '{$html, $perfetto}' > "$results/manifest$i.json"
 
     "$servo" \
-        --profiler-trace-path="$results/$html_trace" --print-pwm \
+        --profiler-trace-path="$results/$html_trace" \
         --ignore-certificate-errors \
         "$@" \
         "$url" &
