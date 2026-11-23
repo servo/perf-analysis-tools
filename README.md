@@ -1,6 +1,11 @@
 Perf analysis tools
 ===================
 
+## Trace format compatibility
+
+Version 0.2.0 and later analyse traces produced by Servo with `tracing-perfetto-file`. For traces
+from the older `tracing-perfetto` backend, use release 0.1.0.
+
 ## How to run a multi-sample study
 
 Our tooling has first-class support for running benchmarks across a matrix of CPU configs, sites, and engines, then collating their results into reports like [our November 2024 report](https://github.com/servo/servo/wiki/Servo-Benchmarking-Report-(November-2024)).

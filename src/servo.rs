@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs::File,
     io::Read,
     path::{Path, PathBuf},
@@ -9,8 +9,12 @@ use std::{
 use jane_eyre::eyre::{self, bail, OptionExt};
 use markup5ever_rcdom::NodeData;
 use perfetto_protos::{
+    debug_annotation::DebugAnnotation,
     trace::Trace,
-    trace_packet::trace_packet::Data,
+    trace_packet::{
+        trace_packet::{Data, SequenceFlags},
+        TracePacket,
+    },
     track_event::{track_event, TrackEvent},
 };
 use protobuf::Message;
@@ -311,53 +315,181 @@ fn analyse_html_trace(url: &str, path: &str) -> eyre::Result<IndividualAnalysis>
     })
 }
 
+/// Decoding state for one packet sequence.
+///
+/// Perfetto producers may encode packet timestamps as deltas, and may intern event and debug
+/// annotation names in `TracePacket::interned_data`. Both are scoped to the sequence identified by
+/// `TracePacket::trusted_packet_sequence_id`.
+#[derive(Default)]
+struct SequenceState {
+    event_names: HashMap<u64, String>,
+    annotation_names: HashMap<u64, String>,
+    annotation_values: HashMap<u64, String>,
+    track_uuid: Option<u64>,
+    timestamp_clock_id: Option<u32>,
+    last_timestamp: Option<u64>,
+    incremental_clocks: HashSet<u32>,
+}
+
+impl SequenceState {
+    fn clear_incremental_state(&mut self) {
+        self.event_names.clear();
+        self.annotation_names.clear();
+        self.annotation_values.clear();
+        self.track_uuid = None;
+        self.timestamp_clock_id = None;
+        self.incremental_clocks.clear();
+    }
+
+    fn ingest(&mut self, packet: &TracePacket) {
+        if let Some(interned) = packet.interned_data.as_ref() {
+            self.event_names.extend(
+                interned
+                    .event_names
+                    .iter()
+                    .filter_map(|entry| Some((entry.iid?, entry.name.clone()?))),
+            );
+            self.annotation_names.extend(
+                interned
+                    .debug_annotation_names
+                    .iter()
+                    .filter_map(|entry| Some((entry.iid?, entry.name.clone()?))),
+            );
+            self.annotation_values.extend(
+                interned
+                    .debug_annotation_string_values
+                    .iter()
+                    .filter_map(|entry| {
+                        let value = String::from_utf8_lossy(entry.str());
+                        Some((entry.iid?, value.into_owned()))
+                    }),
+            );
+        }
+
+        if let Some(defaults) = packet.trace_packet_defaults.as_ref() {
+            if let Some(clock_id) = defaults.timestamp_clock_id {
+                self.timestamp_clock_id = Some(clock_id);
+            }
+            if let Some(track_uuid) = defaults
+                .track_event_defaults
+                .as_ref()
+                .and_then(|defaults| defaults.track_uuid)
+            {
+                self.track_uuid = Some(track_uuid);
+            }
+        }
+
+        if let Some(Data::ClockSnapshot(snapshot)) = packet.data.as_ref() {
+            for clock in &snapshot.clocks {
+                if clock.is_incremental() {
+                    self.incremental_clocks.insert(clock.clock_id());
+                }
+            }
+        }
+    }
+
+    fn resolve_timestamp(&mut self, packet: &TracePacket) -> u64 {
+        let Some(timestamp) = packet.timestamp else {
+            return self.last_timestamp.unwrap_or(0);
+        };
+        let clock_id = packet
+            .timestamp_clock_id
+            .or(self.timestamp_clock_id)
+            .unwrap_or(0);
+        let timestamp = if self.incremental_clocks.contains(&clock_id) {
+            self.last_timestamp
+                .map_or(timestamp, |last| last.saturating_add(timestamp))
+        } else {
+            timestamp
+        };
+        self.last_timestamp = Some(timestamp);
+        timestamp
+    }
+
+    fn event_name(&self, event: &TrackEvent) -> eyre::Result<String> {
+        if !event.has_name_iid() {
+            bail!(
+                "Older tracing-perfetto traces are no longer supported; \
+                 use perf-analysis-tools 0.1.0 for those traces"
+            );
+        }
+        self.event_names
+            .get(&event.name_iid())
+            .cloned()
+            .ok_or_eyre("Unresolved interned event name")
+    }
+
+    fn annotations(&self, event: &TrackEvent) -> BTreeMap<String, DebugAnnotation> {
+        event
+            .debug_annotations
+            .iter()
+            .filter_map(|annotation| {
+                let name = self.annotation_names.get(&annotation.name_iid())?.clone();
+
+                let mut annotation = annotation.clone();
+                if annotation.has_string_value_iid() {
+                    if let Some(value) = self.annotation_values.get(&annotation.string_value_iid())
+                    {
+                        annotation.set_string_value(value.clone());
+                    }
+                }
+
+                Some((name, annotation))
+            })
+            .collect()
+    }
+}
+
+struct PendingSlice {
+    start: u64,
+    name: String,
+    metadata: BTreeMap<String, DebugAnnotation>,
+}
+
 #[tracing::instrument(level = "error")]
 fn analyse_perfetto_trace(url: &str, path: &str) -> eyre::Result<IndividualAnalysis> {
     // Tracks can have slices, instants, and counters. Slices must have stack-like behaviour within
     // a track, so we can use a stack to find pairs and merge them together.
+    let mut sequences: HashMap<u32, SequenceState> = HashMap::default();
     let mut tracks: HashMap<u64, Vec<PendingSlice>> = HashMap::default();
-    struct PendingSlice {
-        start: u64,
-        event: TrackEvent,
-    }
 
     let mut all_events = vec![];
     for mut packet in Trace::parse_from_reader(&mut File::open(path)?)?.packet {
-        // Assume the default clock (1ns, absolute).
-        assert!(packet.timestamp_clock_id.is_none());
+        let sequence = sequences
+            .entry(packet.trusted_packet_sequence_id())
+            .or_default();
+        if packet.sequence_flags() & SequenceFlags::SEQ_INCREMENTAL_STATE_CLEARED as u32 != 0 {
+            sequence.clear_incremental_state();
+        }
+        sequence.ingest(&packet);
+        let timestamp = sequence.resolve_timestamp(&packet);
 
-        match packet.data.take().ok_or_eyre("TracePacket has no data")? {
-            Data::TrackEvent(event) => {
-                let slice_stack = tracks.entry(event.track_uuid()).or_default();
-                match event.type_() {
-                    track_event::Type::TYPE_SLICE_BEGIN => {
-                        slice_stack.push(PendingSlice {
-                            start: packet.timestamp(),
-                            event,
-                        });
-                    }
-                    track_event::Type::TYPE_SLICE_END => {
-                        let slice = slice_stack
-                            .pop()
-                            .ok_or_eyre("Slice stack for track is empty")?;
-                        if event.has_name() {
-                            assert_eq!(event.name(), slice.event.name());
-                        }
-                        let event = Event {
-                            name: slice.event.name().to_owned(),
-                            start: Duration::from_nanos(slice.start),
-                            duration: Some(Duration::from_nanos(packet.timestamp() - slice.start)),
-                            metadata: slice
-                                .event
-                                .debug_annotations
-                                .into_iter()
-                                .map(|a| (a.name().to_owned(), a))
-                                .collect(),
-                        };
-                        all_events.push(event);
-                    }
-                    _ => {}
-                }
+        let Some(data) = packet.data.take() else {
+            continue;
+        };
+        let Data::TrackEvent(event) = data else {
+            continue;
+        };
+
+        // With some span modes, the track UUID is only recorded in the packet defaults.
+        let track_uuid = event.track_uuid.or(sequence.track_uuid).unwrap_or(0);
+        let slice_stack = tracks.entry(track_uuid).or_default();
+        match event.type_() {
+            track_event::Type::TYPE_SLICE_BEGIN => slice_stack.push(PendingSlice {
+                start: timestamp,
+                name: sequence.event_name(&event)?,
+                metadata: sequence.annotations(&event),
+            }),
+            track_event::Type::TYPE_SLICE_END => {
+                let slice = slice_stack
+                    .pop()
+                    .ok_or_eyre("Slice stack for track is empty")?;
+                all_events.push(Event {
+                    name: slice.name,
+                    start: Duration::from_nanos(slice.start),
+                    duration: Some(Duration::from_nanos(timestamp.saturating_sub(slice.start))),
+                    metadata: slice.metadata,
+                });
             }
             _ => {}
         }

@@ -30,6 +30,10 @@ fn main() -> eyre::Result<()> {
     let args = args().skip(2).collect::<Vec<_>>();
 
     match &*mode {
+        "--version" | "-V" => {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
         // Usage: collect <studies/example>
         "collect" => crate::collect::main(args),
         // Usage: analyse <studies/example>
